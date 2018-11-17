@@ -1,4 +1,5 @@
 local EntityWatcher = require("EntityWatcher")
+local WeaponSystem = require("WeaponSystem")
 local GUI = require("GUI")
 local MiniGameUISystem = InitMiniGameUISystem()
 --local DEBUG=true
@@ -172,8 +173,8 @@ end
 
 function Framework:receiveMsg(parameter)
     if parameter.mKey ~= "GlobalProperty" then
-        --echo("devilwalk", "receiveMsg:parameter:")
-        --echo("devilwalk", parameter)
+        echo("devilwalk", "receiveMsg:parameter:")
+        echo("devilwalk", parameter)
     end
     if parameter.mTo then
         if parameter.mTo == "Host" then
@@ -770,6 +771,10 @@ function EntitySyncerManager:getByEntityID(entityID)
 end
 -----------------------------------------------------------------------------------------EntityCustom-----------------------------------------------------------------------------------------
 function EntityCustom:construction(parameter)
+    self.mModel = parameter.mModel
+    self.mModelResource = parameter.mModelResource
+    self.mType = parameter.mType
+    self.mScaling = parameter.mModelScaling or 1
     local real_x,real_y,real_z = ConvertToRealPosition(parameter.mX,parameter.mY,parameter.mZ)
     self.mPosition = vector3d:new(real_x,real_y,real_z)
     self.mFacing = parameter.mModelFacing or 0
@@ -879,7 +884,9 @@ function EntityCustom:update()
 end
 
 function EntityCustom:sendToHost(message, parameter)
-    Client.sendToHost(self:_getSendKey(), {mMessage = message, mParameter = parameter})
+    if self:_getSendKey() then
+        Client.sendToHost(self:_getSendKey(), {mMessage = message, mParameter = parameter})
+    end
 end
 
 function EntityCustom:requestToHost(message, parameter)
@@ -889,15 +896,21 @@ function EntityCustom:requestToHost(message, parameter)
 end
 
 function EntityCustom:hostSendToClient(playerID, message, parameter)
-    Host.sendTo(playerID, {mKey = self:_getSendKey(), mMessage = message, mParameter = parameter})
+    if self:_getSendKey() then
+        Host.sendTo(playerID, {mKey = self:_getSendKey(), mMessage = message, mParameter = parameter})
+    end
 end
 
 function EntityCustom:clientSendToClient(playerID, message, parameter)
-    Client.sendToClient(playerID, self:_getSendKey(), {mMessage = message, mParameter = parameter})
+    if self:_getSendKey() then
+        Client.sendToClient(playerID, self:_getSendKey(), {mMessage = message, mParameter = parameter})
+    end
 end
 
 function EntityCustom:broadcast(message, parameter)
-    Client.broadcast(self:_getSendKey(), {mMessage = message, mParameter = parameter})
+    if self:_getSendKey() then
+        Client.broadcast(self:_getSendKey(), {mMessage = message, mParameter = parameter})
+    end
 end
 
 function EntityCustom:receive(parameter)
@@ -910,11 +923,17 @@ function EntityCustom:receive(parameter)
         end
     else
         if parameter.mMessage == "SetPosition" then
-            self:_setPosition(parameter.mParameter.mX, parameter.mParameter.mY, parameter.mParameter.mZ)
+            if parameter.mFrom ~= GetPlayerId() then
+                self:_setPosition(parameter.mParameter.mX, parameter.mParameter.mY, parameter.mParameter.mZ)
+            end
         elseif parameter.mMessage == "MoveTo" then
-            self:_moveTo(parameter.mParameter.mX, parameter.mParameter.mY, parameter.mParameter.mZ, parameter.mParameter.mType)
+            if parameter.mFrom ~= GetPlayerId() then
+                self:_moveTo(parameter.mParameter.mX, parameter.mParameter.mY, parameter.mParameter.mZ, parameter.mParameter.mType)
+            end
         elseif parameter.mMessage == "SetAnimationID" then
-            self:_setAnimationID(parameter.mParameter.mID)
+            if parameter.mFrom ~= GetPlayerId() then
+                self:_setAnimationID(parameter.mParameter.mID)
+            end
         end
     end
 end
@@ -928,6 +947,7 @@ function EntityCustom:setHostKey(hostKey)
 end
 
 function EntityCustom:setPosition(x, y, z)
+    self:_setPosition(x,y,z)
     self:broadcast("SetPosition", {mX = x, mY = y, mZ = z})
 end
 
@@ -946,6 +966,7 @@ function EntityCustom:moveToBlock(x,y,z,type)
 end
 
 function EntityCustom:moveTo(x,y,z,type)
+    self:_moveTo(x,y,z,type)
     self:broadcast("MoveTo",{mX = x, mY = y, mZ = z,mType = type})
 end
 
@@ -964,6 +985,7 @@ function EntityCustom:_moveTo(x,y,z,type)
 end
 
 function EntityCustom:setAnimationID(id)
+    self:_setAnimationID(id)
     self:broadcast("setAnimationID",{mID = id})
 end
 
@@ -991,6 +1013,31 @@ function EntityCustomManager:construction()
 
     Host.addListener("EntityCustomManager", self)
     Client.addListener("EntityCustomManager", self)
+
+    self:requestToHost("SyncEntities",nil,function(parameter)
+        for _,info in pairs(parameter.mEntities) do
+            local entity = self:_createEntity(
+                info.mType,
+                0,
+                0,
+                0,
+                info.mModel,
+                info.mHostKey,
+                info.mScaling,
+                info.mFacing
+            )
+            entity.mPosition = vector3d:new(info.mPosition[1],info.mPosition[2],info.mPosition[3])
+            entity.mAnimationID = info.mAnimationID
+            if info.mTargets then
+                for _,target in pairs(info.mTargets) do
+                    entity.mTargets[#entity.mTargets+1] = vector3d:new(target[1],target[2],target[3])
+                end
+            end
+            if info.mMoveDirection then
+                entity.mMoveDirection = vector3d:new(info.mMoveDirection[1],info.mMoveDirection[2],info.mMoveDirection[3])
+            end
+        end
+    end)
 end
 
 function EntityCustomManager:destruction()
@@ -1013,15 +1060,15 @@ function EntityCustomManager:receive(parameter)
     local is_responese, _ = string.find(parameter.mMessage, "_Response")
     if is_responese then
         local message = string.sub(parameter.mMessage, 1, is_responese - 1)
-        if self.mResponseCallback[message] then
-            self.mResponseCallback[message](parameter.mParameter)
-            self.mResponseCallback[message] = nil
+        if self.mResponseCallback[message] and self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey] then
+            self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey](parameter.mParameter)
+            self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey] = nil
         end
     else
         if parameter.mMessage == "CreateEntityHost" then
             local host_key = self:_generateNextEntityHostKey()
-            self:hostSendToClient(parameter.mFrom, "CreateEntityHost_Response", {mHostKey = host_key})
-            self:broadcast(
+            self:hostSendToClient(parameter.mFrom, "CreateEntityHost_Response", {mHostKey = host_key,mResponseCallbackKey = parameter.mParameter.mResponseCallbackKey})
+            self:hostBroadcast(
                 "CreateEntity",
                 {
                     mType = parameter.mParameter.mType,
@@ -1054,6 +1101,22 @@ function EntityCustomManager:receive(parameter)
             if parameter.mParameter.mPlayerID ~= GetPlayerId() then
                 self:_createTrackEntity(parameter.mParameter.mTracks)
             end
+        elseif parameter.mMessage == "SyncEntities" then
+            local entities = {}
+            for _,entity in pairs(self.mEntities) do
+                entities[#entities+1] = 
+                {mPosition = entity.mPosition
+                ,mType = entity.mType
+                ,mMoveDirection = entity.mMoveDirection
+                ,mFacing = entity.mFacing
+                ,mModel = entity.mModel
+                ,mModelResource = entity.mModelResource
+                ,mScaling = entity.mScaling
+                ,mHostKey = entity.mHostKey
+                ,mAnimationID = entity.mAnimationID
+                ,mTargets = entity.mTargets}
+            end
+            self:hostSendToClient(parameter.mFrom, "SyncEntities_Response", {mEntities = entities,mResponseCallbackKey = parameter.mParameter.mResponseCallbackKey})
         end
     end
 end
@@ -1064,7 +1127,13 @@ end
 
 function EntityCustomManager:requestToHost(message, parameter, callback)
     self.mResponseCallback = self.mResponseCallback or {}
-    self.mResponseCallback[message] = callback
+    self.mResponseCallback[message] = self.mResponseCallback[message] or  {}
+    self.mResponseCallbackKey = self.mResponseCallbackKey or 1
+    local callback_key = self.mResponseCallbackKey
+    self.mResponseCallbackKey = self.mResponseCallbackKey + 1
+    self.mResponseCallback[message][callback_key] = callback
+    parameter = parameter or {}
+    parameter.mResponseCallbackKey = callback_key
     self:sendToHost(message, parameter)
 end
 
@@ -1076,8 +1145,12 @@ function EntityCustomManager:clientSendToClient(playerID, message, parameter)
     Client.sendToClient(playerID, "EntityCustomManager", {mMessage = message, mParameter = parameter})
 end
 
-function EntityCustomManager:broadcast(message, parameter)
+function EntityCustomManager:clientBroadcast(message, parameter)
     Client.broadcast("EntityCustomManager", {mMessage = message, mParameter = parameter})
+end
+
+function EntityCustomManager:hostBroadcast(message, parameter)
+    Host.broadcast({mKey = "EntityCustomManager", mMessage = message, mParameter = parameter})
 end
 
 function EntityCustomManager:createEntity(parameter,callback)
@@ -1132,7 +1205,7 @@ function EntityCustomManager:destroyEntity(clientKey)
     local client_key = entity.mClientKey
     self:_destroyEntity(entity)
     if host_key then
-        self:broadcast("DestroyEntity", {mHostKey = host_key})
+        self:clientBroadcast("DestroyEntity", {mHostKey = host_key})
     else
         CommandQueueManager.singleton():post(
             new(
@@ -1142,7 +1215,7 @@ function EntityCustomManager:destroyEntity(clientKey)
                     mExecutingCallback = function(command)
                         local fake_entity = self.mFakeEntities[client_key]
                         if fake_entity and fake_entity.mHostKey then
-                            self:broadcast("DestroyEntity", {mHostKey = fake_entity.mHostKey})
+                            self:clientBroadcast("DestroyEntity", {mHostKey = fake_entity.mHostKey})
                             self.mFakeEntities[client_key] = nil
                             command.mState = Command.EState.Finish
                         end
@@ -1155,7 +1228,7 @@ end
 
 function EntityCustomManager:createTrackEntity(tracks)
     self:_createTrackEntity(tracks)
-    self:broadcast("CreateTrackEntity", {mTracks = tracks, mPlayerID = GetPlayerId()})
+    self:clientBroadcast("CreateTrackEntity", {mTracks = tracks, mPlayerID = GetPlayerId()})
 end
 
 function EntityCustomManager:_createEntity(type, x, y, z, path, hostKey, modelScaling, modelFacing)
@@ -1179,6 +1252,7 @@ function EntityCustomManager:_destroyEntity(entity)
 end
 
 function EntityCustomManager:_generateNextEntityHostKey()
+    self.mIsHost = true
     local ret = self.mNextEntityHostKey
     self.mNextEntityHostKey = self.mNextEntityHostKey + 1
     return ret
@@ -2087,7 +2161,7 @@ GameConfig.mMatch = {
     mMonsterGenerateSpeed = 0.9,
     mTime = 300
 }
-GameConfig.mPrepareTime = 15
+GameConfig.mPrepareTime = 1
 GameConfig.mBullet = {mModelResource = {hash = "FkgiJVNeYnWcWW68sMUEI7dRGjSE", pid = "14307", ext = "bmax"}}
 GameConfig.mHitEffect = {mModel = "character/v5/09effect/ceshi/fire/2/OnHit.x", mModelScaling = 0.7}
 GameConfig.mSwitchLevelTime = 5
@@ -2144,20 +2218,21 @@ function GameCompute.computeMonsterLevel(matchLevel)
 end
 
 function GameCompute.computeMonsterGenerateCount(matchLevel)
-    local F2 = 45
-    local F3 = 15
-    if matchLevel == 1 then
-        return F2 - F3
-    elseif matchLevel > 1 then
-        local level = (matchLevel - 1) % 3
-        if level == 1 then
-            return F2 - F3
-        elseif level == 2 then
-            return F2
-        else
-            return F2 + F3
-        end
-    end
+    return 1
+    -- local F2 = 45
+    -- local F3 = 15
+    -- if matchLevel == 1 then
+    --     return F2 - F3
+    -- elseif matchLevel > 1 then
+    --     local level = (matchLevel - 1) % 3
+    --     if level == 1 then
+    --         return F2 - F3
+    --     elseif level == 2 then
+    --         return F2
+    --     else
+    --         return F2 + F3
+    --     end
+    -- end
 end
 
 function GameCompute.computeMonsterGenerateCountScale(players)
@@ -4272,6 +4347,7 @@ function Host_Game:construction()
     self.mProperty = new(GameProperty)
     self.mEffectManager = new(Host_GameEffectManager)
     self.mSafeHouse = {}
+    self.mProtecter = new(Host_GameProtecter)
     local x, y, z = GetHomePosition()
     x, y, z = ConvertToBlockIndex(x, y + 0.5, z)
     y = y - 1
@@ -4303,6 +4379,9 @@ function Host_Game:destruction()
     end
     if self.mScene then
         delete(self.mScene.mTerrain)
+    end
+    if self.mProtecter then
+        delete(self.mProtecter)
     end
     self.mProperty:safeWrite("mLevel")
     self.mProperty:safeWrite("mWaveLevel")
@@ -4471,6 +4550,7 @@ function Host_Game:_startWave(wave)
             Command_Callback,
             {
                 mDebug = "Host_Game:_startWave/Start",
+                mTimeOutProcess = function()end,
                 mExecuteCallback = function(command)
                     self.mMonsterManager:setScene(self.mScene)
                 end,
@@ -4493,7 +4573,7 @@ function Host_Game:_startWave(wave)
                         self:broadcast("WaveSuccess")
                         command.mState = Command.EState.Finish
                         self:_startWave(self.mProperty:cache().mWaveLevel + 1)
-                    else--check failed
+                    elseif false then--check failed
                         self:broadcast("FightFail")
                         command.mState = Command.EState.Finish
                         self:start()
@@ -4545,8 +4625,6 @@ function Host_Game:_nextMatch()
 end
 
 function Host_Game:_startMatch(callback)
-    self.mProperty:safeWrite("mLevel", self.mProperty:cache().mSwitchLevel or (self.mProperty:cache().mLevel + 1))
-    self.mProperty:safeWrite("mSwitchLevel")
     local scene = {mLevel = self.mProperty:cache().mLevel}
     local terrains = {}
     for _, terrain in pairs(GameConfig.mTerrainLibrary) do
@@ -4784,7 +4862,7 @@ function Host_GameMonsterManager:_createMonster(parameter)
         Host_GameMonster,
         {
             mConfigIndex = parameter.mConfigIndex,
-            mPosition = parameter.mPosition,
+            mRoad = parameter.mRoad,
             mLevel = GameCompute.computeMonsterLevel(Host_Game.singleton():getProperty():cache().mLevel)
         }
     )
@@ -4877,8 +4955,8 @@ function Host_GameTerrain:applyTemplate(callback)
             end
             for _, point in pairs(monster_points) do
                 self:_calculateRoad(point)
-                restoreBlock(point[1],point[2],point[3])
-                setBlock(point[1],point[2],point[3],0)
+                restoreBlock(point[1],point[2] + 1,point[3])
+                setBlock(point[1],point[2] + 1,point[3],0)
             end
         end
         if callback then
@@ -4930,12 +5008,14 @@ function Host_GameTerrain:getProtectPoint()
 end
 
 function Host_GameTerrain:_calculateRoad(monsterPoint)
-    local road = {{monsterPoint[1],monsterPoint[2] + 1,monsterPoint[3]}}
+    local road = {}
     local road_block_id = GetBlockId(monsterPoint[1], monsterPoint[2] + 1, monsterPoint[3])
     setBlock(monsterPoint[1], monsterPoint[2] + 1, monsterPoint[3],0)
     local function _checkRoad(point,fromDir)
-        if GetBlockId(point[1],point[2],point[3]) == road_block_id then
+        if monsterPoint == point  or GetBlockId(point[1],point[2],point[3]) == road_block_id then
             road[#road + 1] = {point[1],point[2]+1,point[3]}
+        else
+            return
         end
         if fromDir ~= "x" then
             _checkRoad({point[1] + 1,point[2],point[3]},"-x")
@@ -5056,20 +5136,19 @@ function Host_GameMonster:construction(parameter)
     self.mID = Host_GameMonster.mNameIndex
     Host_GameMonster.mNameIndex = Host_GameMonster.mNameIndex + 1
     local client_key = EntityCustomManager.singleton():createEntity(
-        {mType = "EntityNPCOnline"
-        ,mX = parameter.mPosition[1]
-        ,mY = parameter.mPosition[2]
-        ,mZ = parameter.mPosition[3]
+        {mX = parameter.mRoad[1][1]
+        ,mY = parameter.mRoad[1][2]
+        ,mZ = parameter.mRoad[1][3]
         ,mModel = self:getConfig().mModel
         ,mModelResource = self:getConfig().mModelResource
         ,mModelScaling = self:getConfig().mModelScaling},function(hostKey)
             self.mProperty:safeWrite("mEntityHostKey", hostKey)
-    end)
+            self.mEntity:setAnimationID(1)
+            for _,point in pairs(parameter.mRoad) do
+                self.mEntity:moveToBlock(point[1],point[2],point[3],"addition")
+            end
+        end)
     self.mEntity = EntityCustomManager.singleton():getEntityByClientKey(client_key)
-    self.mEntity:setAnimationID(1)
-    for _,point in pairs(parameter.mRoad) do
-        self.mEntity:moveToBlock(point[1],point[2],point[3],true)
-    end
     self.mProperty = new(GameMonsterProperty, {mID = self.mID})
     self.mProperty:safeWrite("mConfigIndex", parameter.mConfigIndex)
     self.mProperty:safeWrite("mLevel", parameter.mLevel)
@@ -5770,7 +5849,6 @@ function Client_GamePlayer:construction(parameter)
                 if value == "Fight" then
                     setUiValue("upgrade_background", "visible", false)
                     setUiValue("levelInfo_background", "visible", true)
-                    self:_updateGun()
                 elseif value == "SafeHouse" then
                     setUiValue("upgrade_background", "visible", true)
                     setUiValue("levelInfo_background", "visible", false)
