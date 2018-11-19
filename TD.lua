@@ -2083,6 +2083,7 @@ local GameMonsterProperty = inherit(Property)
 local GameMonsterManagerProperty = inherit(Property)
 local GameProperty = inherit(Property)
 local GameProtecterProperty = inherit(Property)
+local GameTowerProperty = inherit(Property)
 local GameEffectManager = {}
 local Host_Game = {}
 local Host_GamePlayerManager = {}
@@ -4204,6 +4205,17 @@ end
 function GameProtecterProperty:_getLockKey(propertyName)
     return "GameProtecterProperty/" .. propertyName
 end
+-----------------------------------------------------------------------------------------GameTowerProperty-----------------------------------------------------------------------------------
+function GameTowerProperty:construction(parameter)
+    self.mID = parameter.mID
+end
+
+function GameTowerProperty:destruction()
+end
+
+function GameTowerProperty:_getLockKey(propertyName)
+    return "GameTowerProperty/"..tostring(self.mID).."/"..propertyName
+end
 -----------------------------------------------------------------------------------------GameEffectManager-----------------------------------------------------------------------------------
 GameEffectManager.Effect = {}
 function GameEffectManager.Effect:construction(parameter)
@@ -5306,6 +5318,48 @@ function Host_GameProtecter:_setPosition(pos)
             command.mState = Command.EState.Finish
         end}))
     end
+end
+-----------------------------------------------------------------------------------------Host_GameTower-----------------------------------------------------------------------------------
+Host_GameTower.mNameIndex = 1
+function Host_GameTower:construction(parameter)
+    self.mID = Host_GameTower.mNameIndex
+    Host_GameTower.mNameIndex = Host_GameTower.mNameIndex + 1
+    self.mProperty = new(GameTowerProperty,{mID = self.mID})
+    self.mProperty:safeWrite("mConfigIndex",parameter.mConfigIndex)
+end
+
+function Host_GameTower:destruction()
+    delete(self.mProperty)
+    self.mProperty = nil
+end
+
+function Host_GameTower:update()
+    self.mAttackTimers = self.mAttackTimers or {}
+    for i,attack_cfg in pairs(self:getConfig().mAttacks) do
+        local timer = self.mAttackTimers[i]
+        if timer and timer:total() >= attack_cfg.mSpeed then
+            self.mAttackTimers[i] = nil
+        end
+    end   
+    for i,attack_cfg in pairs(self:getConfig().mAttacks) do
+        local timer = self.mAttackTimers[i]
+        if not timer then
+            for i=-attack_cfg.mRange,attack_cfg.mRange do
+            end
+        end
+    end   
+end
+
+function Host_GameTower:_getSendKey()
+    return "GameTower/"..tostring(self.mID)
+end
+
+function Host_GameTower:getProperty()
+    return self.mProperty
+end
+
+function Host_GameTower:getConfig()
+    return GameConfig.mTowerLibrary[self.mProperty:cache().mConfigIndex]
 end
 -----------------------------------------------------------------------------------------Client_Game-----------------------------------------------------------------------------------
 function Client_Game.singleton(construct)
