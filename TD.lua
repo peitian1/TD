@@ -772,14 +772,13 @@ end
 -----------------------------------------------------------------------------------------EntityCustom-----------------------------------------------------------------------------------------
 function EntityCustom:construction(parameter)
     self.mModel = parameter.mModel
-    self.mModelResource = parameter.mModelResource
     self.mType = parameter.mType
-    self.mScaling = parameter.mModelScaling or 1
+    self.mScaling = self.mModel.mScaling or 1
     local real_x,real_y,real_z = ConvertToRealPosition(parameter.mX,parameter.mY,parameter.mZ)
     self.mPosition = vector3d:new(real_x,real_y,real_z)
-    self.mFacing = parameter.mModelFacing or 0
+    self.mFacing = self.mModel.mFacing or 0
     self.mTargets = {}
-    if parameter.mModel then
+    if self.mModel.mFile then
         if parameter.mType == "EntityNPCOnline" then
             self.mEntity = CreateNPC({
                 bx = parameter.mX,
@@ -791,14 +790,14 @@ function EntityCustom:construction(parameter)
                 mDisableSync = true,
                 is_dummy = true
             })
-            self.mEntity._super.SetMainAssetPath(self.mEntity,parameter.mModel)
+            self.mEntity._super.SetMainAssetPath(self.mEntity,self.mModel.mFile)
         else
-            self.mEntity = CreateEntity(parameter.mX, parameter.mY, parameter.mZ, parameter.mModel)
+            self.mEntity = CreateEntity(parameter.mX, parameter.mY, parameter.mZ, self.mModel.mFile)
         end
-        self.mEntity:SetFacing(parameter.mModelFacing or 0)
-        self.mEntity:SetScaling(parameter.mModelScaling or 1)
-    elseif parameter.mModelResource then
-        GetResourceModel(parameter.mModelResource,function(path)
+        self.mEntity:SetFacing(self.mFacing or 0)
+        self.mEntity:SetScaling(self.mScaling or 1)
+    elseif self.mModel.mResource then
+        GetResourceModel(self.mModel.mResource,function(path)
             if parameter.mType == "EntityNPCOnline" then
                 self.mEntity = CreateNPC({
                     bx = parameter.mX,
@@ -814,8 +813,8 @@ function EntityCustom:construction(parameter)
             else
                 self.mEntity = CreateEntity(parameter.mX, parameter.mY, parameter.mZ, path)
             end
-            self.mEntity:SetFacing(parameter.mModelFacing or 0)
-            self.mEntity:SetScaling(parameter.mModelScaling or 1)
+            self.mEntity:SetFacing(self.mFacing or 0)
+            self.mEntity:SetScaling(self.mScaling or 1)
         end)
     end
     self.mClientKey = parameter.mClientKey
@@ -1022,12 +1021,12 @@ function EntityCustomManager:construction()
                 0,
                 0,
                 info.mModel,
-                info.mHostKey,
-                info.mScaling,
-                info.mFacing
+                info.mHostKey
             )
             entity.mPosition = vector3d:new(info.mPosition[1],info.mPosition[2],info.mPosition[3])
             entity.mAnimationID = info.mAnimationID
+            entity.mFacing = info.mFacing
+            entity.mScaling = info.mScaling
             if info.mTargets then
                 for _,target in pairs(info.mTargets) do
                     entity.mTargets[#entity.mTargets+1] = vector3d:new(target[1],target[2],target[3])
@@ -1076,8 +1075,6 @@ function EntityCustomManager:receive(parameter)
                     mY = parameter.mParameter.mY,
                     mZ = parameter.mParameter.mZ,
                     mModel = parameter.mParameter.mModel,
-                    mModelScaling = parameter.mParameter.mModelScaling,
-                    mModelFacing = parameter.mParameter.mModelFacing,
                     mHostKey = host_key,
                     mPlayerID = parameter.mParameter.mPlayerID
                 }
@@ -1090,9 +1087,7 @@ function EntityCustomManager:receive(parameter)
                     parameter.mParameter.mY,
                     parameter.mParameter.mZ,
                     parameter.mParameter.mModel,
-                    parameter.mParameter.mHostKey,
-                    parameter.mParameter.mModelScaling,
-                    parameter.mParameter.mModelFacing
+                    parameter.mParameter.mHostKey
                 )
             end
         elseif parameter.mMessage == "DestroyEntity" then
@@ -1110,7 +1105,6 @@ function EntityCustomManager:receive(parameter)
                 ,mMoveDirection = entity.mMoveDirection
                 ,mFacing = entity.mFacing
                 ,mModel = entity.mModel
-                ,mModelResource = entity.mModelResource
                 ,mScaling = entity.mScaling
                 ,mHostKey = entity.mHostKey
                 ,mAnimationID = entity.mAnimationID
@@ -1154,13 +1148,13 @@ function EntityCustomManager:hostBroadcast(message, parameter)
 end
 
 function EntityCustomManager:createEntity(parameter,callback)
-    local entity = self:_createEntity(parameter.mType, parameter.mX, parameter.mY, parameter.mZ, parameter.mModel, nil, parameter.mModelScaling, parameter.mModelFacing)
+    local entity = self:_createEntity(parameter.mType, parameter.mX, parameter.mY, parameter.mZ, parameter.mModel)
     local client_key = entity.mClientKey
     self.mFakeEntities = self.mFakeEntities or {}
     self.mFakeEntities[client_key] = {mClientKey = client_key}
     self:requestToHost(
         "CreateEntityHost",
-        {mType = parameter.mType, mX = parameter.mX, mY = parameter.mY, mZ = parameter.mZ, mModel = parameter.mModel, mModelResource = parameter.mModelResource, mModelScaling = parameter.mModelScaling, mModelFacing = parameter.mModelFacing, mPlayerID = GetPlayerId()},
+        {mType = parameter.mType, mX = parameter.mX, mY = parameter.mY, mZ = parameter.mZ, mModel = parameter.mModel, mPlayerID = GetPlayerId()},
         function(parameter)
             local entity = self:getEntityByClientKey(client_key)
             if entity then
@@ -1231,11 +1225,11 @@ function EntityCustomManager:createTrackEntity(tracks)
     self:clientBroadcast("CreateTrackEntity", {mTracks = tracks, mPlayerID = GetPlayerId()})
 end
 
-function EntityCustomManager:_createEntity(type, x, y, z, path, hostKey, modelScaling, modelFacing)
+function EntityCustomManager:_createEntity(type, x, y, z, model, hostKey)
     local ret =
         new(
         EntityCustom,
-        {mType = type, mX = x, mY = y, mZ = z, mModel = path, mClientKey = self:_generateNextEntityClientKey(), mHostKey = hostKey, mModelScaling = modelScaling, mModelFacing = modelFacing}
+        {mType = type, mX = x, mY = y, mZ = z, mModel = model,mClientKey = self:_generateNextEntityClientKey(), mHostKey = hostKey}
     )
     self.mEntities[#self.mEntities + 1] = ret
     return ret
@@ -1302,7 +1296,7 @@ function EntityCustomManager:_createTrackEntity(tracks)
     local command_queue = CommandQueueManager.singleton():createQueue()
     for i, track in pairs(tracks) do
         local x, y, z = ConvertToBlockIndex(track.mSrcPosition[1], track.mSrcPosition[2], track.mSrcPosition[3])
-        local entity = self:_createEntity(track.mEntityType, x, y, z, track.mModel, nil, track.mModelScaling, track.mModelFacing)
+        local entity = self:_createEntity(track.mEntityType, x, y, z, track.mModel)
         entity:_setPosition(track.mSrcPosition[1], track.mSrcPosition[2], track.mSrcPosition[3])
         self:_createEntityTrack(entity, track, command_queue)
         command_queue:post(
@@ -2099,6 +2093,7 @@ local Host_GameMonsterGenerator = {}
 local Host_GamePlayer = {}
 local Host_GameMonster = {}
 local Host_GameProtecter = {}
+local Host_GameTower = {}
 local Client_Game = {}
 local Client_GamePlayerManager = {}
 local Client_GameMonsterManager = {}
@@ -2106,49 +2101,51 @@ local Client_GameEffectManager = {}
 local Client_GamePlayer = {}
 local Client_GameMonster = {}
 local Client_GameProtecter = {}
+local Client_GameTower = {}
 -----------------------------------------------------------------------------------------GameConfig-----------------------------------------------------------------------------------
 GameConfig.mMonsterPointBlockID = 2101
 GameConfig.mProtectedPointBlockID = 2102
+GameConfig.mTowerPointBlockID = 128
 GameConfig.mMonsterLibrary = {
-  {mModel = "character/v3/Pet/CAITOUBB/CAITOUbb.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 1 and level <= 16 then return true end end, mName = "雄性菜头宝宝"},
-  {mModel = "character/v3/Pet/CTBB/ctbb_LOD15.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 8 and level <= 24 then return true end end, mName = "雌性菜头宝宝"},
-  {mModel = "character/v3/Pet/HGS/HGS_LOD15.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 15 and level <= 32 then return true end end, mName = "皇冠蛇宝宝"},
-  {mModel = "character/v3/Pet/MFBB/MFBB_LOD15.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 22 and level <= 40 then return true end end, mName = "蜜蜂宝宝"},
-  {mModel = "character/v3/Pet/MGBB/mgbb_LOD15.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 29 and level <= 48 then return true end end, mName = "蘑菇宝宝"},
-  {mModel = "character/v3/Pet/PP/PP_LOD5.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 36 and level <= 56 then return true end end, mName = "PP机器人"},
-  {mModel = "character/v3/Pet/SJTZ/SJTZ_LOD05.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 43 and level <= 64 then return true end end, mName = "小精灵宝宝"},
-  {mModel = "character/v3/Pet/XGBB/XGBB_LOD5.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 50 and level <= 72 then return true end end, mName = "西瓜宝宝"},
-  {mModel = "character/v3/Pet/HDL/HDL_LOD15.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 57 and level <= 80 then return true end end, mName = "花朵兰宝宝"},
-  {mModel = "character/v3/Pet/YYCZ/yycz_LOD5.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 64 and level <= 88 then return true end end, mName = "音乐机器人"},
-  {mModel = "character/v5/02animals/DragonBaby/DragonBabyGreen/DragonBabyGreen.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 71 and level <= 96 then return true end end, mName = "绿龙宝宝"},
-  {mModel = "character/v5/02animals/DragonBaby/DragonBabyOrange/DragonBabyOrange.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 78 and level <= 104 then return true end end, mName = "橙龙宝宝"},
-  {mModel = "character/v5/02animals/DragonBaby/DragonBabyYellow/DragonBabyYellow.x", mModelScaling =2, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 85 and level <= 112 then return true end end, mName = "黄龙宝宝"},
-  {mModel = "character/v3/Npc/shitouren/shitouren.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 92 and level <= 120 then return true end end, mName = "石头人"},
-  {mModel = "character/v3/GameNpc/TZMYS/TZMYS.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 99 and level <= 128 then return true end end, mName = "兔子先生"},
-  {mModel = "character/v5/02animals/Pig/Pig_V1.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 106 and level <= 136 then return true end end, mName = "猪战士"},
-  {mModel = "character/v5/02animals/Pig/Pig_V2.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 113 and level <= 144 then return true end end, mName = "猪射手"},
-  {mModel = "character/v5/02animals/JXRXLG/JXRXLG.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 120 and level <= 152 then return true end end, mName = "机械人"},
-  {mModel = "character/v5/01human/SmallWindEagle/SmallWindEagle.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 127 and level <= 160 then return true end end, mName = "小风鹰"},
-  {mModel = "character/v5/02animals/SophieDragon/SophieDragon.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 134 and level <= 168 then return true end end, mName = "索菲龙"},
-  {mModel = "character/v5/02animals/XiYiJinJiaoLong/XiYiJinJiaoLong.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 141 and level <= 176 then return true end end, mName = "蜥蜴金蛟龙"},
-  {mModel = "character/v5/06quest/DisorderRobot/DisorderRobot.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 148 and level <= 184 then return true end end, mName = "无序机器人"},
-  {mModel = "character/v5/02animals/FireBon/FireBon.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 155 and level <= 192 then return true end end, mName = "冰魔"},
-  {mModel = "character/v5/01human/Dragon/Dragon.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 162 and level <= 200 then return true end end, mName = "龙"},
-  {mModel = "character/v5/01human/Messenger/Messenger.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 169 and level <= 208 then return true end end, mName = "蘑菇妖"},
-  {mModel = "character/v3/GameNpc/XRKZS/XRKZS.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 176 and level <= 216 then return true end end, mName = "熊人战士"},
-  {mModel = "character/v3/GameNpc/BZL/BZL.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 183 and level <= 224 then return true end end, mName = "冰紫龙"},
-  {mModel = "character/v3/GameNpc/FEILONG/FEILONG.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 190 and level <= 232 then return true end end, mName = "飞龙"},
-  {mModel = "character/v3/GameNpc/HUAYAO/HUAYAO.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 197 and level <= 240 then return true end end, mName = "花妖"},
-  {mModel = "character/v5/02animals/WhiteDragon/WhiteDragon.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 204 and level <= 248 then return true end end, mName = "白龙"},
-  {mModel = "character/v5/02animals/BlueDragon/BlueDragon.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 211 and level <= 256 then return true end end, mName = "蓝龙"},
-  {mModel = "character/v5/02animals/CyanDragon/CyanDragon.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 218 and level <= 264 then return true end end, mName = "暴龙"},
-  {mModel = "character/v5/02animals/EpicDragonDeath/EpicDragonDeath.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 225 and level <= 272 then return true end end, mName = "死亡龙"},
-  {mModel = "character/v5/02animals/EpicDragonFire/EpicDragonFire.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 232 and level <= 280 then return true end end, mName = "火龙"},
-  {mModel = "character/v5/02animals/EpicDragonIce/EpicDragonIce.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 239 and level <= 288 then return true end end, mName = "冰龙"},
-  {mModel = "character/v5/02animals/EpicDragonLife/EpicDragonLife.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 246 and level <= 296 then return true end end, mName = "生命龙"},
-  {mModel = "character/v5/02animals/EpicDragonStorm/EpicDragonStorm.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 253 and level <= 304 then return true end end, mName = "雷龙"},
-  {mModel = "character/v5/02animals/GoldenDragon/GoldenDragon_02.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 260 and level <= 312 then return true end end, mName = "金属性龙"},
-  {mModel = "character/v5/02animals/GreenDragon/GreenDragon_02.x", mModelScaling =1, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 267 and level <= 320 then return true end end, mName = "绿龙"},
+  {mModel = {mFile = "character/v3/Pet/CAITOUBB/CAITOUbb.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 1 and level <= 16 then return true end end, mName = "雄性菜头宝宝"},
+  {mModel = {mFile = "character/v3/Pet/CTBB/ctbb_LOD15.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 8 and level <= 24 then return true end end, mName = "雌性菜头宝宝"},
+  {mModel = {mFile = "character/v3/Pet/HGS/HGS_LOD15.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 15 and level <= 32 then return true end end, mName = "皇冠蛇宝宝"},
+  {mModel = {mFile = "character/v3/Pet/MFBB/MFBB_LOD15.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 22 and level <= 40 then return true end end, mName = "蜜蜂宝宝"},
+  {mModel = {mFile = "character/v3/Pet/MGBB/mgbb_LOD15.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 29 and level <= 48 then return true end end, mName = "蘑菇宝宝"},
+  {mModel = {mFile = "character/v3/Pet/PP/PP_LOD5.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 36 and level <= 56 then return true end end, mName = "PP机器人"},
+  {mModel = {mFile = "character/v3/Pet/SJTZ/SJTZ_LOD05.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 43 and level <= 64 then return true end end, mName = "小精灵宝宝"},
+  {mModel = {mFile = "character/v3/Pet/XGBB/XGBB_LOD5.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 50 and level <= 72 then return true end end, mName = "西瓜宝宝"},
+  {mModel = {mFile = "character/v3/Pet/HDL/HDL_LOD15.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 57 and level <= 80 then return true end end, mName = "花朵兰宝宝"},
+  {mModel = {mFile = "character/v3/Pet/YYCZ/yycz_LOD5.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 64 and level <= 88 then return true end end, mName = "音乐机器人"},
+  {mModel = {mFile = "character/v5/02animals/DragonBaby/DragonBabyGreen/DragonBabyGreen.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 71 and level <= 96 then return true end end, mName = "绿龙宝宝"},
+  {mModel = {mFile = "character/v5/02animals/DragonBaby/DragonBabyOrange/DragonBabyOrange.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 78 and level <= 104 then return true end end, mName = "橙龙宝宝"},
+  {mModel = {mFile = "character/v5/02animals/DragonBaby/DragonBabyYellow/DragonBabyYellow.x", mScaling =2}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 85 and level <= 112 then return true end end, mName = "黄龙宝宝"},
+  {mModel = {mFile = "character/v3/Npc/shitouren/shitouren.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 92 and level <= 120 then return true end end, mName = "石头人"},
+  {mModel = {mFile = "character/v3/GameNpc/TZMYS/TZMYS.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 99 and level <= 128 then return true end end, mName = "兔子先生"},
+  {mModel = {mFile = "character/v5/02animals/Pig/Pig_V1.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 106 and level <= 136 then return true end end, mName = "猪战士"},
+  {mModel = {mFile = "character/v5/02animals/Pig/Pig_V2.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 113 and level <= 144 then return true end end, mName = "猪射手"},
+  {mModel = {mFile = "character/v5/02animals/JXRXLG/JXRXLG.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 120 and level <= 152 then return true end end, mName = "机械人"},
+  {mModel = {mFile = "character/v5/01human/SmallWindEagle/SmallWindEagle.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 127 and level <= 160 then return true end end, mName = "小风鹰"},
+  {mModel = {mFile = "character/v5/02animals/SophieDragon/SophieDragon.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 134 and level <= 168 then return true end end, mName = "索菲龙"},
+  {mModel = {mFile = "character/v5/02animals/XiYiJinJiaoLong/XiYiJinJiaoLong.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 141 and level <= 176 then return true end end, mName = "蜥蜴金蛟龙"},
+  {mModel = {mFile = "character/v5/06quest/DisorderRobot/DisorderRobot.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 148 and level <= 184 then return true end end, mName = "无序机器人"},
+  {mModel = {mFile = "character/v5/02animals/FireBon/FireBon.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 155 and level <= 192 then return true end end, mName = "冰魔"},
+  {mModel = {mFile = "character/v5/01human/Dragon/Dragon.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 162 and level <= 200 then return true end end, mName = "龙"},
+  {mModel = {mFile = "character/v5/01human/Messenger/Messenger.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 169 and level <= 208 then return true end end, mName = "蘑菇妖"},
+  {mModel = {mFile = "character/v3/GameNpc/XRKZS/XRKZS.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 176 and level <= 216 then return true end end, mName = "熊人战士"},
+  {mModel = {mFile = "character/v3/GameNpc/BZL/BZL.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 183 and level <= 224 then return true end end, mName = "冰紫龙"},
+  {mModel = {mFile = "character/v3/GameNpc/FEILONG/FEILONG.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 190 and level <= 232 then return true end end, mName = "飞龙"},
+  {mModel = {mFile = "character/v3/GameNpc/HUAYAO/HUAYAO.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 197 and level <= 240 then return true end end, mName = "花妖"},
+  {mModel = {mFile = "character/v5/02animals/WhiteDragon/WhiteDragon.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 204 and level <= 248 then return true end end, mName = "白龙"},
+  {mModel = {mFile = "character/v5/02animals/BlueDragon/BlueDragon.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 211 and level <= 256 then return true end end, mName = "蓝龙"},
+  {mModel = {mFile = "character/v5/02animals/CyanDragon/CyanDragon.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 218 and level <= 264 then return true end end, mName = "暴龙"},
+  {mModel = {mFile = "character/v5/02animals/EpicDragonDeath/EpicDragonDeath.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 225 and level <= 272 then return true end end, mName = "死亡龙"},
+  {mModel = {mFile = "character/v5/02animals/EpicDragonFire/EpicDragonFire.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 232 and level <= 280 then return true end end, mName = "火龙"},
+  {mModel = {mFile = "character/v5/02animals/EpicDragonIce/EpicDragonIce.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 239 and level <= 288 then return true end end, mName = "冰龙"},
+  {mModel = {mFile = "character/v5/02animals/EpicDragonLife/EpicDragonLife.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 246 and level <= 296 then return true end end, mName = "生命龙"},
+  {mModel = {mFile = "character/v5/02animals/EpicDragonStorm/EpicDragonStorm.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 253 and level <= 304 then return true end end, mName = "雷龙"},
+  {mModel = {mFile = "character/v5/02animals/GoldenDragon/GoldenDragon_02.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 260 and level <= 312 then return true end end, mName = "金属性龙"},
+  {mModel = {mFile = "character/v5/02animals/GreenDragon/GreenDragon_02.x", mScaling =1}, mAttackTime = 1, mStopTime = 1, mAttackRange = 1, mLevelEnable = function(level) if level >= 267 and level <= 320 then return true end end, mName = "绿龙"},
 }
 GameConfig.mTowerLibrary = {
     {mType = "箭塔",mAttacks = {{mType = "穿刺",mValue = 1,mRange = 1,mSpeed = 1}},mBuildTime = 0,mCost = 10,mModel = {mResource = {hash="Fpwm_tO5WWTM7KdZODWtX-GTr5FB",pid="280",ext="bmax",},mScaling = 1}}
@@ -2156,14 +2153,15 @@ GameConfig.mTowerLibrary = {
 GameConfig.mTerrainLibrary = {
     {mTemplateResource = {hash="FhrooRzcFZNtWX9vDBeyah4Bhq2q",pid="19189",ext="bmax",}},
 }
+GameConfig.mProtecter = {mHP = 3,mModel = {mResource = {hash = "FkgiJVNeYnWcWW68sMUEI7dRGjSE", pid = "14307", ext = "bmax"},mScaling = 1}}
 GameConfig.mSafeHouse = {mTemplateResource = {hash = "FpHOk_oMV1lBqaTtMLjqAtqyzJp4", pid = "5453", ext = "bmax"}}
 GameConfig.mMatch = {
     mMonsterGenerateSpeed = 0.9,
     mTime = 300
 }
 GameConfig.mPrepareTime = 1
-GameConfig.mBullet = {mModelResource = {hash = "FkgiJVNeYnWcWW68sMUEI7dRGjSE", pid = "14307", ext = "bmax"}}
-GameConfig.mHitEffect = {mModel = "character/v5/09effect/ceshi/fire/2/OnHit.x", mModelScaling = 0.7}
+GameConfig.mBullet = {mModel = {mResource = {hash = "FkgiJVNeYnWcWW68sMUEI7dRGjSE", pid = "14307", ext = "bmax"}}}
+GameConfig.mHitEffect = {mModel = {mFile = "character/v5/09effect/ceshi/fire/2/OnHit.x", mScaling = 0.7}}
 GameConfig.mSwitchLevelTime = 5
 -----------------------------------------------------------------------------------------GameCompute-----------------------------------------------------------------------------------
 function GameCompute.computePlayerHP(level)
@@ -2501,7 +2499,7 @@ local gameUi = {
                 saveData.mMoney = saveData.mMoney - money
                 saveData.mHPLevel = saveData.mHPLevel + 1
                 local x,y,z = GetPlayer():GetBlockPos()
-                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"},function(hostKey)
+                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = {mFile = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"}},function(hostKey)
                 end)
                 CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "UpdateLevel",mExecutingCallback = function(command)
                     command.mTimer = command.mTimer or new(Timer)
@@ -2631,7 +2629,7 @@ local gameUi = {
                 saveData.mMoney = saveData.mMoney - money
                 saveData.mAttackValueLevel = saveData.mAttackValueLevel + 1
                 local x,y,z = GetPlayer():GetBlockPos()
-                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"},function(hostKey)
+                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = {mFile = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"}},function(hostKey)
                 end)
                 CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "UpdateLevel",mExecutingCallback = function(command)
                     command.mTimer = command.mTimer or new(Timer)
@@ -2762,7 +2760,7 @@ local gameUi = {
                 saveData.mMoney = saveData.mMoney - money
                 saveData.mAttackTimeLevel = saveData.mAttackTimeLevel + 1
                 local x,y,z = GetPlayer():GetBlockPos()
-                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"},function(hostKey)
+                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = {mFile = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"}},function(hostKey)
                 end)
                 CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "UpdateLevel",mExecutingCallback = function(command)
                     command.mTimer = command.mTimer or new(Timer)
@@ -4480,6 +4478,10 @@ function Host_Game:getEffectManager()
     return self.mEffectManager
 end
 
+function Host_Game:getProtecter()
+    return self.mProtecter
+end
+
 function Host_Game:setScene(scene, callback)
     if self.mScene then
         delete(self.mScene.mTerrain)
@@ -4493,12 +4495,14 @@ function Host_Game:setScene(scene, callback)
             function()
                 self.mPlayerManager:setScene(self.mScene)
                 self.mMonsterManager:setScene(self.mScene)
+                self.mProtecter:setScene(self.mScene)
                 callback()
             end
         )
     else
         self.mPlayerManager:setScene(self.mSafeHouse)
         self.mMonsterManager:setScene(self.mSafeHouse)
+        self.mProtecter:setScene(self.mSafeHouse)
         callback()
     end
 end
@@ -4573,7 +4577,7 @@ function Host_Game:_startWave(wave)
                         self:broadcast("WaveSuccess")
                         command.mState = Command.EState.Finish
                         self:_startWave(self.mProperty:cache().mWaveLevel + 1)
-                    elseif false then--check failed
+                    elseif self.mProtecter:getProperty():cache().mHP <= 0 then--check failed
                         self:broadcast("FightFail")
                         command.mState = Command.EState.Finish
                         self:start()
@@ -4925,6 +4929,7 @@ function Host_GameTerrain:construction(parameter)
     self.mTemplate = parameter.mTemplate
     self.mTemplateResource = parameter.mTemplateResource
     self.mRoads = {}
+    self.mTowerPoints = {}
     self.mCommandQueue = CommandQueueManager.singleton():createQueue()
 end
 
@@ -4950,6 +4955,8 @@ function Host_GameTerrain:applyTemplate(callback)
                     }
                 elseif block[4] == GameConfig.mProtectedPointBlockID then
                     self.mProtectPoint = {block[1] + offset[1], block[2] + offset[2], block[3] + offset[3]}
+                elseif block[4] == GameConfig.mTowerPointBlockID then
+                    self.mTowerPoints[#self.mTowerPoints+1] = {block[1] + offset[1], block[2] + offset[2], block[3] + offset[3]}
                 end
                 setBlock(block[1] + offset[1], block[2] + offset[2], block[3] + offset[3], block[4], block[5])
             end
@@ -5139,9 +5146,8 @@ function Host_GameMonster:construction(parameter)
         {mX = parameter.mRoad[1][1]
         ,mY = parameter.mRoad[1][2]
         ,mZ = parameter.mRoad[1][3]
-        ,mModel = self:getConfig().mModel
-        ,mModelResource = self:getConfig().mModelResource
-        ,mModelScaling = self:getConfig().mModelScaling},function(hostKey)
+        ,mModel = {mFile = self:getConfig().mModel.mFile,mResource = self:getConfig().mModel.mResource,mScaling = self:getConfig().mModel.mScaling,mFacing = self:getConfig().mModel.mFacing}
+        },function(hostKey)
             self.mProperty:safeWrite("mEntityHostKey", hostKey)
             self.mEntity:setAnimationID(1)
             for _,point in pairs(parameter.mRoad) do
@@ -5172,6 +5178,14 @@ function Host_GameMonster:destruction()
 end
 
 function Host_GameMonster:update()
+    if self.mEntity then
+        if not next(self.mEntity.mTargets) then
+            Host_Game.singleton():getProtecter():onHit()
+            self.mProperty:safeWrite("mHP",0)
+            EntityCustomManager.singleton():destroyEntity(self.mEntity.mClientKey)
+            self.mEntity = nil
+        end
+    end
 end
 
 function Host_GameMonster:receive(parameter)
@@ -5239,15 +5253,59 @@ end
 -----------------------------------------------------------------------------------------Host_GameProtecter-----------------------------------------------------------------------------------
 function Host_GameProtecter:construction(parameter)
     self.mProperty = new(GameProtecterProperty)
-    self.mProperty:safeWrite("mHPLevel",1)
+    local client_key = EntityCustomManager.singleton():createEntity(
+        {mX = 19200
+        ,mY = 10
+        ,mZ = 19200
+        ,mModel = {mFile = GameConfig.mProtecter.mModel.mFile,mResource = GameConfig.mProtecter.mModel.mResource}
+        },function(hostKey)
+            self.mProperty:safeWrite("mEntityHostKey", hostKey)
+            self.mEntity:setAnimationID(1)
+        end)
+    self.mEntity = EntityCustomManager.singleton():getEntityByClientKey(client_key)
 end
 
 function Host_GameProtecter:destruction()
-    self.mProperty:safeWrite("mHPLevel")
+    EntityCustomManager.singleton():destroyEntity(self.mEntity.mClientKey)
+    self.mEntity = nil
+    self.mProperty:safeWrite("mHP")
+end
+
+function Host_GameProtecter:getProperty()
+    return self.mProperty
 end
 
 function Host_GameProtecter:_getSendKey()
     return "GameProtecter"
+end
+
+function Host_GameProtecter:setScene(scene)
+    if scene and scene.mTerrain then
+        local x,y,z = ConvertToRealPosition(scene.mTerrain:getProtectPoint()[1],scene.mTerrain:getProtectPoint()[2] + 1,scene.mTerrain:getProtectPoint()[3])
+        self:_setPosition({x,y,z})
+    else
+        self:_setPosition()
+    end
+    self.mProperty:safeWrite("mHP",GameConfig.mProtecter.mHP)
+end
+
+function Host_GameProtecter:onHit()
+    self.mProperty:safeWrite("mHP",math.max(self.mProperty:cache().mHP - 1,0))
+end
+
+function Host_GameProtecter:_setPosition(pos)
+    if self.mProperty:cache().mEntityHostKey then
+        if pos then
+            self.mEntity:setPosition(pos[1],pos[2],pos[3])
+        else
+            self.mEntity:setPosition(0,0,0)
+        end
+    else
+        CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "Host_GameProtecter:setScene",mExecuteCallback = function(command)
+            self:_setPosition(scene)
+            command.mState = Command.EState.Finish
+        end}))
+    end
 end
 -----------------------------------------------------------------------------------------Client_Game-----------------------------------------------------------------------------------
 function Client_Game.singleton(construct)
@@ -5263,6 +5321,7 @@ function Client_Game:construction()
     self.mPlayerManager = new(Client_GamePlayerManager)
     self.mMonsterManager = new(Client_GameMonsterManager)
     self.mEffectManager = new(Client_GameEffectManager)
+    self.mProtecter = new(Client_GameProtecter)
 
     self.mProperty:addPropertyListener(
         "mLevel",
@@ -5319,6 +5378,8 @@ function Client_Game:construction()
 end
 
 function Client_Game:destruction()
+    delete(self.mProtecter)
+    self.mProtecter = nil
     delete(self.mMonsterManager)
     self.mMonsterManager = nil
     delete(self.mPlayerManager)
@@ -5334,6 +5395,7 @@ function Client_Game:destruction()
     self.mProperty:removePropertyListener("mSwitchLevelAgree")
     self.mProperty:removePropertyListener("mSwitchLevelDisagree")
     delete(self.mProperty)
+    self.mProperty = nil
     Client.removeListener("Game", self)
     Client_Game.msInstance = nil
 end
@@ -5839,6 +5901,10 @@ function Client_GamePlayer:construction(parameter)
                             not getUiValue("chooseLevel_background", "visible")
                         )
                     end
+                elseif event.event_type == "mouseReleaseEvent" and event.mouse_button == "left" then
+                    local pick_result = Pick(false, true, true, false, false)
+                    if pick_result and pick_result.block_id and pick_result.block_id == GameConfig.mTowerPointBlockID then
+                    end
                 end
             end
         )
@@ -6065,8 +6131,7 @@ function Client_GamePlayer:onHit(weapon, result)
             mType = "Point",
             mTime = 0.1,
             mSrcPosition = target_position - track_bullet.mDirection,
-            mModel = GameConfig.mHitEffect.mModel,
-            mModelScaling = GameConfig.mHitEffect.mModelScaling
+            mModel = {mFile = GameConfig.mHitEffect.mModel.mFile, mResource = GameConfig.mHitEffect.mModel.mResource,mScaling = GameConfig.mHitEffect.mModel.mScaling}
         }
         local function create_track_entity()
             if track_bullet.mModel and track_hit.mModel then
@@ -6074,9 +6139,9 @@ function Client_GamePlayer:onHit(weapon, result)
             end
         end
         GetResourceModel(
-            GameConfig.mBullet.mModelResource,
+            GameConfig.mBullet.mModel.mResource,
             function(path, err)
-                track_bullet.mModel = path
+                track_bullet.mModel = {mFile = path}
                 create_track_entity()
             end
         )
@@ -6353,6 +6418,126 @@ function Client_GameMonster:_updateBloodUI()
 end
 
 function Client_GameMonster:_generateNextHeadOnUIID()
+    local ret = self.mNextHeadOnUIID
+    self.mNextHeadOnUIID = self.mNextHeadOnUIID + 1
+    return ret
+end
+-----------------------------------------------------------------------------------------Client_GameProtecter-----------------------------------------------------------------------------------
+function Client_GameProtecter:construction(parameter)
+    self.mCommandQueue = CommandQueueManager.singleton():createQueue()
+    self.mProperty = new(GameProtecterProperty)
+    self.mHeadOnUIs = {}
+    self.mNextHeadOnUIID = 1
+
+    self.mProperty:addPropertyListener(
+        "mEntityHostKey",
+        self,
+        function(_, value)
+            self:_updateBloodUI()
+        end
+    )
+    self.mProperty:addPropertyListener(
+        "mHP",
+        self,
+        function(_, value)
+            self:_updateBloodUI()
+        end
+    )
+    Client.addListener(self:_getSendKey(), self)
+end
+
+function Client_GameProtecter:destruction()
+    delete(self.mProperty)
+    self.mProperty = nil
+    CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
+    self.mCommandQueue = nil
+end
+
+function Client_GameProtecter:getProperty()
+    return self.mProperty
+end
+
+function Client_GameProtecter:_getSendKey()
+    return "GameProtecter"
+end
+
+function Client_GameProtecter:_updateBloodUI()
+    if self:getProperty():cache().mEntityHostKey then
+        local entity = EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey)
+        if
+        entity and entity.mEntity and entity.mEntity.entityId and
+        entity.mEntity:GetInnerObject() and
+                GetEntityHeadOnObject(
+                    entity.mEntity.entityId,
+                    "Blood/" .. tostring(entity.mEntity.entityId)
+                )
+        then
+            self.mUIEntityID = entity.mEntity.entityId
+            if not self.mBloodUI then
+                self.mBloodUI =
+                    GetEntityHeadOnObject(
+                        entity.mEntity.entityId,
+                    "Blood/" .. tostring(entity.mEntity.entityId)
+                ):createChild(
+                    {
+                        ui_name = "background",
+                        type = "container",
+                        color = "255 0 0",
+                        align = "_ct",
+                        y = -100,
+                        x = -130,
+                        height = 20,
+                        width = 200,
+                        visible = true
+                    }
+                )
+            end
+            if not self.mNameUI then
+                self.mNameUI =
+                    GetEntityHeadOnObject(
+                        entity.mEntity.entityId,
+                    "Name/" .. tostring(entity.mEntity.entityId)
+                ):createChild(
+                    {
+                        ui_name = "background",
+                        type = "text",
+                        font_type = "微软雅黑",
+                        font_color = "0 255 0",
+                        font_size = 25,
+                        align = "_ct",
+                        y = -150,
+                        x = -130,
+                        height = 50,
+                        width = 200,
+                        visible = true
+                    }
+                )
+            end
+        end
+    end
+    if self.mBloodUI and self.mNameUI then
+        if self.mProperty:cache().mHP then
+            self.mBloodUI.width =
+                200 * self.mProperty:cache().mHP / GameConfig.mProtecter.mHP
+        end
+        self.mNameUI.text = "又粗又大又黑又长"
+    else
+        self.mCommandQueue:post(
+            new(
+                Command_Callback,
+                {
+                    mDebug = "Client_GameProtecter:_updateBloodUI",
+                    mExecuteCallback = function(command)
+                        self:_updateBloodUI()
+                        command.mState = Command.EState.Finish
+                    end
+                }
+            )
+        )
+    end
+end
+
+function Client_GameProtecter:_generateNextHeadOnUIID()
     local ret = self.mNextHeadOnUIID
     self.mNextHeadOnUIID = self.mNextHeadOnUIID + 1
     return ret
