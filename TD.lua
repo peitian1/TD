@@ -3014,7 +3014,7 @@ function Host_GameScene:receive(parameter)
 end
 
 function Host_GameScene:broadcast(message,parameter)
-    Host.broadcast({mKey = "GameScene", mMessage = message, mParameter = parameter})
+    Host.broadcast({mKey = self:_getSendKey(), mMessage = message, mParameter = parameter})
 end
 
 function Host_GameScene:getProperty()
@@ -3363,9 +3363,14 @@ function Host_GameMonster:receive(parameter)
     end
 end
 
+function Host_GameMonster:broadcast(message,parameter)
+    Host.broadcast({mKey = self:_getSendKey(), mMessage = message, mParameter = parameter})
+end
+
 function Host_GameMonster:onHit(tower,attackIndex)
     local damage = GameCompute.computeDamage(tower,self,attackIndex)
     sub_stract = math.min(damage, self.mProperty:cache().mHP)
+    self:broadcast("OnHit",{mDamage = sub_stract})
     self.mDamaged = self.mDamaged or {}
     self.mDamaged[tower:getOwnerID()] = self.mDamaged[tower:getOwnerID()] or 0
     self.mDamaged[tower:getOwnerID()] = self.mDamaged[tower:getOwnerID()] + sub_stract
@@ -3536,7 +3541,7 @@ function Host_GameTower:update()
                     local track_bullet = {
                         mType = "Ray",
                         mTime = 1,
-                        mSpeed = 100,
+                        mSpeed = 1,
                         mSrcPosition = src_position,
                     }
                     local dir = target_position - src_position
@@ -3557,7 +3562,26 @@ function Host_GameTower:update()
                     GetResourceModel(
                         GameConfig.mBullet.mModel.mResource,
                         function(path, err)
-                            track_bullet.mModel = {mFile = path}
+                            local facing = math.acos(track_bullet.mDirection:dot(1,0,0))
+                            while facing > 3.14 do
+                                if facing > 3.15 then
+                                    facing = facing - 3.14
+                                else
+                                    facing = 3.14
+                                end
+                            end
+                            while facing < -3.14 do
+                                if facing < -3.15 then
+                                    facing = facing + 3.14
+                                else
+                                    facing = -3.14
+                                end
+                            end
+                            if track_bullet.mDirection[3] > 0 then
+                                facing = -facing
+                            end
+                            facing = facing - 1.72
+                            track_bullet.mModel = {mFile = path,mFacing = facing}
                             create_track_entity()
                         end
                     )
@@ -4312,6 +4336,58 @@ function Client_GameMonster:sendToHost(message, parameter)
 end
 
 function Client_GameMonster:receive(parameter)
+    if parameter.mMessage == "OnHit" then
+        local hit_value = parameter.mParameter.mDamage
+        if
+        EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey) and EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity and
+        EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity:GetInnerObject() and
+                GetEntityHeadOnObject(
+                    EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity,
+                    "OnHit/" .. tostring(EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity)
+                )
+        then
+            local ui =
+                GetEntityHeadOnObject(
+                    EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity,
+                "OnHit/" .. tostring(EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity)
+            ):createChild(
+                {
+                    ui_name = "background",
+                    type = "text",
+                    font_type = "微软雅黑",
+                    font_color = "255 0 0",
+                    font_size = 50,
+                    align = "_ct",
+                    y = -100,
+                    x = -80,
+                    height = 50,
+                    width = 200,
+                    visible = true,
+                    text = "-" .. tostring(hit_value)
+                }
+            )
+            local ui_id = self:_generateNextHeadOnUIID()
+            self.mHeadOnUIs[ui_id] = ui
+            CommandQueueManager.singleton():post(
+                new(
+                    Command_Callback,
+                    {
+                        mDebug = "Client_GameMonster:onHit/UI",
+                        mExecutingCallback = function(command)
+                            command.mTimer = command.mTimer or new(Timer)
+                            if command.mTimer:total() > 0.5 then
+                                ui:destroy()
+                                self.mHeadOnUIs[ui_id] = nil
+                                command.mState = Command.EState.Finish
+                            else
+                                ui.y = -100 - 150 * command.mTimer:total()
+                            end
+                        end
+                    }
+                )
+            )
+        end
+    end
 end
 
 function Client_GameMonster:getID()
