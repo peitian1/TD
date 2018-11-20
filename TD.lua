@@ -1164,11 +1164,11 @@ function EntityCustomManager:createEntity(parameter,callback)
                 self.mFakeEntities[client_key].mHostKey = parameter.mHostKey
             end
             if callback then
-                callback(entity.mHostKey)
+                callback(parameter.mHostKey)
             end
         end
     )
-    return client_key
+    return entity
 end
 
 function EntityCustomManager:getEntityByHostKey(hostKey)
@@ -2081,14 +2081,18 @@ local GameCompute = {}
 local GamePlayerProperty = inherit(Property)
 local GameMonsterProperty = inherit(Property)
 local GameMonsterManagerProperty = inherit(Property)
+local GameTowerManagerProperty = inherit(Property)
 local GameProperty = inherit(Property)
+local GameSceneProperty = inherit(Property)
 local GameProtecterProperty = inherit(Property)
 local GameTowerProperty = inherit(Property)
 local GameEffectManager = {}
 local Host_Game = {}
 local Host_GamePlayerManager = {}
 local Host_GameMonsterManager = {}
+local Host_GameTowerManager = {}
 local Host_GameEffectManager = {}
+local Host_GameScene = {}
 local Host_GameTerrain = {}
 local Host_GameMonsterGenerator = {}
 local Host_GamePlayer = {}
@@ -2098,7 +2102,9 @@ local Host_GameTower = {}
 local Client_Game = {}
 local Client_GamePlayerManager = {}
 local Client_GameMonsterManager = {}
+local Client_GameTowerManager = {}
 local Client_GameEffectManager = {}
+local Client_GameScene = {}
 local Client_GamePlayer = {}
 local Client_GameMonster = {}
 local Client_GameProtecter = {}
@@ -2165,1993 +2171,33 @@ GameConfig.mBullet = {mModel = {mResource = {hash = "FkgiJVNeYnWcWW68sMUEI7dRGjS
 GameConfig.mHitEffect = {mModel = {mFile = "character/v5/09effect/ceshi/fire/2/OnHit.x", mScaling = 0.7}}
 GameConfig.mSwitchLevelTime = 5
 -----------------------------------------------------------------------------------------GameCompute-----------------------------------------------------------------------------------
-function GameCompute.computePlayerHP(level)
-    return 7 / GameCompute.computeMonsterAttackTime() * GameCompute.computeMonsterAttackValue(level)
-end
-
-function GameCompute.computePlayerAttackValue(level)
-    return level + 19
-end
-
-function GameCompute.computePlayerAttackTime(level)
-    local H1 = 0.00005
-    local A8 = level
-    local H2 = -(0.55 + (100 ^ 2 - 1) * H1) / 99
-    local H3 = -H1 + (0.55 + (100 ^ 2 - 1) * H1) / 99 + 0.6
-    local J1 = -H2 / (2 * H1)
-    local J2 = (4 * H1 * H3 - H2 ^ 2) / (4 * H1)
-    return H1 * (A8 - J1) ^ 2 + J2
-end
-
-function GameCompute.computePlayerAttackTimePercent(level)
-    if level == 1 then
-        return 0
-    end
-    local percent =
-        (GameCompute.computePlayerAttackTime(1) - GameCompute.computePlayerAttackTime(level)) /
-        GameCompute.computePlayerAttackTime(1)
-    return processFloat(percent, 4) * 100
-end
-
-function GameCompute.computePlayerFightLevel(hpLevel, attackValueLevel, attackTimeLevel)
-    return hpLevel + attackValueLevel + attackTimeLevel
-end
-
 function GameCompute.computeMonsterHP(level)
-    local C8 = GameCompute.computePlayerAttackValue(level)
-    local B3 = 2
-    local D8 = GameCompute.computePlayerAttackTime(level)
-    return C8 * B3 / D8
-end
-
-function GameCompute.computeMonsterAttackValue(level)
-    return 9 + level
-end
-
-function GameCompute.computeMonsterAttackTime(level)
-    return 1
+    return 10
 end
 
 function GameCompute.computeMonsterLevel(matchLevel)
-    return math.ceil(math.max(matchLevel - 1, 1) / 3)
+    return matchLevel
 end
 
 function GameCompute.computeMonsterGenerateCount(matchLevel)
     return 1
-    -- local F2 = 45
-    -- local F3 = 15
-    -- if matchLevel == 1 then
-    --     return F2 - F3
-    -- elseif matchLevel > 1 then
-    --     local level = (matchLevel - 1) % 3
-    --     if level == 1 then
-    --         return F2 - F3
-    --     elseif level == 2 then
-    --         return F2
-    --     else
-    --         return F2 + F3
-    --     end
-    -- end
 end
 
 function GameCompute.computeMonsterGenerateCountScale(players)
     return 1
 end
 
-function GameCompute.computeMatchSuccessMoney(matchLevel, playerCount)
-    playerCount = math.max(playerCount, 2)
-    local averageMonsterCount = 45
-    return averageMonsterCount*
-        monLootGold(GameCompute.computeMonsterLevel(matchLevel)) *
-        (playerCount - 1) /
-        playerCount
-end
-function GameCompute.computeMatchSuccessPlayerPlusMoney(matchLevel, playerCount)
-    playerCount = math.max(playerCount, 2)
-    local averageMonsterCount = 45
-    return averageMonsterCount*
-        monLootGold(GameCompute.computeMonsterLevel(matchLevel)) *
-        (playerCount - 1) /
-        playerCount -
-        averageMonsterCount*
-        monLootGold(GameCompute.computeMonsterLevel(matchLevel)) *
-        1 /2
+function GameCompute.computeMatchSuccessMoney()
+    return 0
 end
 
-local function getNextLvTime(lv)
-    if lv < 11 then
-        return 0.015 * lv ^ 2 + 0.1 * lv + 0.6
-    elseif lv >= 11 and lv < 31 then
-        return 0.019 * lv ^ 2 + 0.1 * lv + 0.2
-    elseif lv >= 31 and lv < 61 then
-        return 0.035 * lv ^ 2 + 0.1 * lv - 10
-    elseif lv >= 61 then
-        return 0.09 * lv ^ 2 + 0.3 * lv - 168
-    end
+function GameCompute.computeMatchSuccessPlayerPlusMoney()
+    return 0
 end
 
-local function getNextSkillLvGold(lv)
-    local C2 = 2
-    local nextLvTime = getNextLvTime(lv)
-    local killEfficiency = C2 / 60
-    local goldEfficiency = lv * 20 + 40
-    local nextLvGold = goldEfficiency * nextLvTime
-    -- 三个技能升级
-    nextSkillLvGold = processFloat(nextLvGold / 3, 2)
-    return nextSkillLvGold
-end
-
-function monLootGold(lv)
-    local C2 = 2
-    local nextLvTime = getNextLvTime(lv)
-    local killEfficiency = C2 / 60
-    local goldEfficiency = lv * 20 + 40
-    local nextLvGold = goldEfficiency * nextLvTime
-    local nextLvMonNum = nextLvTime / killEfficiency
-    local monLootGold = nextLvGold / nextLvMonNum
-    return monLootGold
-end
-------------------------------------------------------------------------------------------UI----------------------------------------------------------------------------
-local GUI = require("GUI")
--- local Player = GetPlayer()
--- isServer = (Player.name == "__MP__admin")
--- if isServer then
---     local server = require("server")
--- end
--- local saveData = GetSavedData()
-local saveData = getSavedData()
-local gameUi = {
-    -- 升级界面
-    {
-        ui_name = "upgrade_background",
-        type = "Picture",
-        background_color = "0 0 0 255",
-        align = "_ct",
-        y = 0,
-        x = 0,
-        height = 400,
-        width = 900,
-        visible = false
-    },
-    {
-        ui_name = "upgrade_title",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "能力提升"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 45,
-        x = function()
-            return getUiValue("upgrade_background", "x") - 0
-        end,
-        y = function()
-            return getUiValue("upgrade_background", "y") - 180
-        end,
-        font_bold = true,
-        height = 70,
-        width = 300,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "close_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "220 20 60 255",
-        text = function()
-            local text = "X"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("upgrade_background", "x") + 420
-        end,
-        y = function()
-            return getUiValue("upgrade_background", "y") - 170
-        end,
-        onclick = function()
-            setUiValue("upgrade_background", "visible", false)
-        end,
-        font_bold = true,
-        height = 50,
-        width = 50,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_fightingLevel",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text =
-                "战斗力等级:" .. tostring(saveData.mHPLevel + saveData.mAttackValueLevel + saveData.mAttackTimeLevel - 3)
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("upgrade_background", "x") - 250
-        end,
-        y = function()
-            return getUiValue("upgrade_background", "y") - 100
-        end,
-        font_bold = true,
-        height = 70,
-        width = 300,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "current_gold",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "金钱：" .. tostring(processFloat(saveData.mMoney, 2))
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("upgrade_background", "x") + 150
-        end,
-        y = function()
-            return getUiValue("upgrade_background", "y") - 100
-        end,
-        font_bold = true,
-        height = 70,
-        width = 500,
-        text_format = 2,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 215 0",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    -- 血量
-    {
-        ui_name = "upgrade_HP_background",
-        type = "Picture",
-        background_color = "12 210 62 255",
-        align = "_ct",
-        x = function()
-            return getUiValue("upgrade_background", "x") - 300
-        end,
-        y = function()
-            return getUiValue("upgrade_background", "y") + 0
-        end,
-        height = 150,
-        width = 200,
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_HP",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text =
-                "生命等级:" ..
-                tostring(saveData.mHPLevel - 1) ..
-                    "\n\n生命值：" .. tostring(GameCompute.computePlayerHP(saveData.mHPLevel))
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_HP_background", "x") + 20
-        end,
-        y = function()
-            return getUiValue("upgrade_HP_background", "y") - 0
-        end,
-        font_bold = true,
-        height = 100,
-        width = 200,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_HP_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "0 0 0 255",
-        text = function()
-            local text = "升级"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_HP_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("upgrade_HP_background", "y") + 140
-        end,
-        onclick = function()
-            local money = getNextSkillLvGold(saveData.mHPLevel)
-            if saveData.mMoney >= money then
-                saveData.mMoney = saveData.mMoney - money
-                saveData.mHPLevel = saveData.mHPLevel + 1
-                local x,y,z = GetPlayer():GetBlockPos()
-                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = {mFile = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"}},function(hostKey)
-                end)
-                CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "UpdateLevel",mExecutingCallback = function(command)
-                    command.mTimer = command.mTimer or new(Timer)
-                    command.mEntitySyncTimer = command.mEntitySyncTimer or new(Timer)
-                    local entity = EntityCustomManager.singleton():getEntityByClientKey(client_key)
-                    if command.mEntitySyncTimer:total() > 0.1 then
-                        if entity.mHostKey then
-                            entity:setPosition(GetPlayer():getPosition()[1],GetPlayer():getPosition()[2],GetPlayer():getPosition()[3])
-                        end
-                        delete(command.mEntitySyncTimer)
-                        command.mEntitySyncTimer = nil
-                    end
-                    if command.mTimer:total() > 0.5 then
-                        EntityCustomManager.singleton():destroyEntity(client_key)
-                        command.mState = Command.EState.Finish
-                    end
-                end}))
-            end
-        end,
-        font_bold = true,
-        height = 35,
-        width = 80,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_HP_gold",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "需要金钱：" .. tostring(getNextSkillLvGold(saveData.mHPLevel or 1))
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_HP_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("upgrade_HP_background", "y") + 110
-        end,
-        font_bold = true,
-        height = 50,
-        width = 200,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 215 0",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    -- 攻击力
-    {
-        ui_name = "upgrade_attack_background",
-        type = "Picture",
-        background_color = "236 45 14 255",
-        align = "_ct",
-        x = function()
-            return getUiValue("upgrade_background", "x") - 0
-        end,
-        y = function()
-            return getUiValue("upgrade_background", "y") + 0
-        end,
-        height = 150,
-        width = 200,
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_attack",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text =
-                "攻击等级:" ..
-                tostring(saveData.mAttackValueLevel - 1) ..
-                    "\n\n攻击力：" .. tostring(GameCompute.computePlayerAttackValue(saveData.mAttackValueLevel))
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_attack_background", "x") + 20
-        end,
-        y = function()
-            return getUiValue("upgrade_attack_background", "y") + 0
-        end,
-        font_bold = true,
-        height = 100,
-        width = 200,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_attack_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "0 0 0 255",
-        text = function()
-            local text = "升级"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_attack_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("upgrade_attack_background", "y") + 140
-        end,
-        onclick = function()
-            local money = getNextSkillLvGold(saveData.mAttackValueLevel)
-            if saveData.mMoney >= money then
-                saveData.mMoney = saveData.mMoney - money
-                saveData.mAttackValueLevel = saveData.mAttackValueLevel + 1
-                local x,y,z = GetPlayer():GetBlockPos()
-                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = {mFile = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"}},function(hostKey)
-                end)
-                CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "UpdateLevel",mExecutingCallback = function(command)
-                    command.mTimer = command.mTimer or new(Timer)
-                    command.mEntitySyncTimer = command.mEntitySyncTimer or new(Timer)
-                    local entity = EntityCustomManager.singleton():getEntityByClientKey(client_key)
-                    if command.mEntitySyncTimer:total() > 0.1 then
-                        if entity.mHostKey then
-                            entity:setPosition(GetPlayer():getPosition()[1],GetPlayer():getPosition()[2],GetPlayer():getPosition()[3])
-                        end
-                        delete(command.mEntitySyncTimer)
-                        command.mEntitySyncTimer = nil
-                    end
-                    if command.mTimer:total() > 0.5 then
-                        EntityCustomManager.singleton():destroyEntity(client_key)
-                        command.mState = Command.EState.Finish
-                    end
-                end}))
-            end
-        end,
-        font_bold = true,
-        height = 35,
-        width = 80,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_attack_gold",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "需要金钱：" .. tostring(getNextSkillLvGold(saveData.mAttackValueLevel or 1))
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_attack_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("upgrade_attack_background", "y") + 110
-        end,
-        font_bold = true,
-        height = 50,
-        width = 200,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 215 0",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    -- 攻速
-    {
-        ui_name = "upgrade_attSpeed_background",
-        type = "Picture",
-        background_color = "245 230 9 255",
-        align = "_ct",
-        x = function()
-            return getUiValue("upgrade_background", "x") + 300
-        end,
-        y = function()
-            return getUiValue("upgrade_background", "y") + 0
-        end,
-        height = 150,
-        width = 200,
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_attSpeed",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text =
-                "攻速等级:" ..
-                tostring(saveData.mAttackTimeLevel - 1) ..
-                    "\n\n攻速提升：" ..
-                        tostring(GameCompute.computePlayerAttackTimePercent(saveData.mAttackTimeLevel)) .. "%"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_attSpeed_background", "x") + 20
-        end,
-        y = function()
-            return getUiValue("upgrade_attSpeed_background", "y") + 0
-        end,
-        font_bold = true,
-        height = 100,
-        width = 200,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_attSpeed_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "0 0 0 255",
-        text = function()
-            local text = "升级"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_attSpeed_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("upgrade_attSpeed_background", "y") + 140
-        end,
-        onclick = function()
-            local money = getNextSkillLvGold(saveData.mAttackTimeLevel)
-            if saveData.mMoney >= money then
-                saveData.mMoney = saveData.mMoney - money
-                saveData.mAttackTimeLevel = saveData.mAttackTimeLevel + 1
-                local x,y,z = GetPlayer():GetBlockPos()
-                local client_key = EntityCustomManager.singleton():createEntity({mX = x,mY = y,mZ = z,mModel = {mFile = "character/v5/09effect/Upgrade/Upgrade_CirqueGlowRed.x"}},function(hostKey)
-                end)
-                CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "UpdateLevel",mExecutingCallback = function(command)
-                    command.mTimer = command.mTimer or new(Timer)
-                    command.mEntitySyncTimer = command.mEntitySyncTimer or new(Timer)
-                    local entity = EntityCustomManager.singleton():getEntityByClientKey(client_key)
-                    if command.mEntitySyncTimer:total() > 0.1 then
-                        if entity.mHostKey then
-                            entity:setPosition(GetPlayer():getPosition()[1],GetPlayer():getPosition()[2],GetPlayer():getPosition()[3])
-                        end
-                        delete(command.mEntitySyncTimer)
-                        command.mEntitySyncTimer = nil
-                    end
-                    if command.mTimer:total() > 0.5 then
-                        EntityCustomManager.singleton():destroyEntity(client_key)
-                        command.mState = Command.EState.Finish
-                    end
-                end}))
-            end
-        end,
-        font_bold = true,
-        height = 35,
-        width = 80,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_attSpeed_gold",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "需要金钱：" .. tostring(getNextSkillLvGold(saveData.mAttackTimeLevel or 1))
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("upgrade_attSpeed_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("upgrade_attSpeed_background", "y") + 110
-        end,
-        font_bold = true,
-        height = 50,
-        width = 200,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 215 0",
-        visible = function()
-            return getUiValue("upgrade_background", "visible")
-        end
-    },
-    -- 左下角状态栏
-    {
-        ui_name = "state_background",
-        type = "Picture",
-        background_color = "0 0 0 255",
-        align = "_lb",
-        y = -10,
-        x = 10,
-        height = 250,
-        width = 300,
-        visible = true
-    },
-    {
-        ui_name = "state_current_gold",
-        type = "Text",
-        align = "_lb",
-        text = function()
-            local text = "金钱：" .. tostring(processFloat(saveData.mMoney, 2))
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("state_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("state_background", "y") - 170
-        end,
-        font_bold = true,
-        height = 70,
-        width = 500,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 215 0",
-        visible = function()
-            return getUiValue("state_background", "visible")
-        end
-    },
-    {
-        ui_name = "state_fightingLevel",
-        type = "Text",
-        align = "_lb",
-        text = function()
-            local text =
-                "战斗力等级:" .. tostring(saveData.mHPLevel + saveData.mAttackValueLevel + saveData.mAttackTimeLevel - 3)
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("state_background", "x") - 0
-        end,
-        y = function()
-            return getUiValue("state_background", "y") - 120
-        end,
-        font_bold = true,
-        height = 70,
-        width = 400,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("state_background", "visible")
-        end
-    },
-    {
-        ui_name = "state_levels",
-        type = "Text",
-        align = "_lb",
-        text = function()
-            local text =
-                "生命(Lv" ..
-                tostring(saveData.mHPLevel - 1) ..
-                    ")：" ..
-                        tostring(GameCompute.computePlayerHP(saveData.mHPLevel)) ..
-                            "\n攻击(lv" ..
-                                tostring(saveData.mAttackValueLevel - 1) ..
-                                    ")：" ..
-                                        tostring(GameCompute.computePlayerAttackValue(saveData.mAttackValueLevel)) ..
-                                            "\n攻速(lv" ..
-                                                tostring(saveData.mAttackTimeLevel - 1) ..
-                                                    ")：" ..
-                                                        tostring(
-                                                            GameCompute.computePlayerAttackTimePercent(
-                                                                saveData.mAttackTimeLevel
-                                                            )
-                                                        ) ..
-                                                            "%\n"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("state_background", "x") - 0
-        end,
-        y = function()
-            return getUiValue("state_background", "y") - 30
-        end,
-        font_bold = true,
-        height = 100,
-        width = 400,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("state_background", "visible")
-        end
-    },
-    {
-        ui_name = "upgrade_button",
-        type = "Button",
-        align = "_lb",
-        background_color = "22 255 0 255",
-        text = function()
-            local text = "升级(U)"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("state_background", "x") + 200
-        end,
-        y = function()
-            return getUiValue("state_background", "y") - 60
-        end,
-        onclick = function()
-            setUiValue("upgrade_background", "visible", true)
-        end,
-        font_bold = true,
-        height = 50,
-        width = 100,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("state_background", "visible")
-        end
-    },
-    -- 关卡信息
-    {
-        ui_name = "levelInfo_background",
-        type = "Picture",
-        background_color = "0 0 0 0",
-        align = "_ctt",
-        y = 0,
-        x = 0,
-        height = 200,
-        width = 300,
-        visible = false
-    },
-    {
-        ui_name = "levelInfo_monsterLeft",
-        type = "Text",
-        align = "_ctt",
-        text = function()
-            if Client_Game.singleton():getMonsterManager():getProperty():cache().mMonsterCount then
-                local text =
-                    "怪物剩余：" .. tostring(Client_Game.singleton():getMonsterManager():getProperty():cache().mMonsterCount)
-                return text
-            end
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("levelInfo_background", "x") - 190
-        end,
-        y = function()
-            return getUiValue("levelInfo_background", "y") - 0
-        end,
-        font_bold = true,
-        height = 100,
-        width = 220,
-        text_format = 2,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("levelInfo_background", "visible")
-        end
-    },
-    {
-        ui_name = "levelInfo_currentLevel",
-        type = "Text",
-        align = "_ctt",
-        text = function()
-            local text = "关卡：" .. tostring(Client_Game.singleton():getProperty():cache().mLevel)
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("levelInfo_background", "x") + 280
-        end,
-        y = function()
-            return getUiValue("levelInfo_background", "y") - 0
-        end,
-        font_bold = true,
-        height = 100,
-        width = 400,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("levelInfo_background", "visible")
-        end
-    },
-    {
-        ui_name = "levelInfo_timeLeft",
-        type = "Text",
-        align = "_ctt",
-        text = function()
-            local text =
-                "剩余时间：" ..
-                tostring(
-                    math.floor(Client_Game.singleton():getProperty():cache().mFightLeftTime or GameConfig.mMatch.mTime)
-                ) ..
-                    "秒"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("levelInfo_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("levelInfo_background", "y") + 60
-        end,
-        font_bold = true,
-        height = 100,
-        width = 300,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("levelInfo_background", "visible")
-        end
-    },
-    {
-        ui_name = "chooseLv_vote_button",
-        type = "Button",
-        align = "_ctt",
-        background_color = "22 255 0 255",
-        text = function()
-            local text = "选关投票(L)"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 18,
-        x = function()
-            return getUiValue("levelInfo_background", "x") + 370
-        end,
-        y = function()
-            return getUiValue("levelInfo_background", "y") + 5
-        end,
-        onclick = function()
-            setUiValue("chooseLevel_background", "visible", true)
-        end,
-        font_bold = true,
-        height = 40,
-        width = 120,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return true
-        end
-    },
-    -- 排行榜
-    {
-        ui_name = "ranking_background",
-        type = "Picture",
-        background_color = "0 0 0 0",
-        align = "_rt",
-        y = 0,
-        x = 0,
-        height = 200,
-        width = 300,
-        visible = true
-    },
-    {
-        ui_name = "ranking_tip",
-        type = "Text",
-        align = "_rt",
-        text = function()
-            local text = "按tab打开/关闭排行榜"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 18,
-        x = function()
-            return getUiValue("ranking_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("ranking_background", "y") + 100
-        end,
-        font_bold = true,
-        height = 100,
-        width = 200,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255 150",
-        visible = function()
-            return true
-            -- return getUiValue("ranking_background", "visible")
-        end
-    },
-    {
-        ui_name = "ranking_tittle",
-        type = "Text",
-        align = "_rt",
-        text = function()
-            local text = "玩家        战斗力等级     金钱         杀怪数"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 18,
-        x = function()
-            return getUiValue("ranking_background", "x") + 80
-        end,
-        y = function()
-            return getUiValue("ranking_background", "y") + 130
-        end,
-        font_bold = true,
-        height = 100,
-        width = 400,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("ranking_background", "visible")
-        end
-    },
-    {
-        ui_name = "ranking_playerName",
-        type = "Text",
-        align = "_rt",
-        text = function()
-            local players = Client_Game.singleton():getPlayerManager():getPlayersSortByFightLevel()
-            local text = ""
-            for i, player in pairs(players) do
-                if GetEntityById(player:getID()) then
-                    text = text .. tostring(i) .. "." .. GetEntityById(player:getID()).nickname .. "\n"
-                end
-            end
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 18,
-        x = function()
-            return getUiValue("ranking_background", "x") - 210
-        end,
-        y = function()
-            return getUiValue("ranking_background", "y") + 160
-        end,
-        font_bold = true,
-        height = 500,
-        width = 150,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("ranking_background", "visible")
-        end
-    },
-    {
-        ui_name = "ranking_fightLevel",
-        type = "Text",
-        align = "_rt",
-        text = function()
-            local players = Client_Game.singleton():getPlayerManager():getPlayersSortByFightLevel()
-            local text = ""
-            for i, player in pairs(players) do
-                text =
-                    text ..
-                    tostring(
-                        GameCompute.computePlayerFightLevel(
-                            (player:getProperty():cache().mHPLevel or 1) - 1,
-                            (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-                            (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-                        )
-                    ) ..
-                        "\n"
-            end
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 18,
-        x = function()
-            return getUiValue("ranking_background", "x") - 170
-        end,
-        y = function()
-            return getUiValue("ranking_background", "y") + 160
-        end,
-        font_bold = true,
-        height = 500,
-        width = 50,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("ranking_background", "visible")
-        end
-    },
-    {
-        ui_name = "ranking_gold",
-        type = "Text",
-        align = "_rt",
-        text = function()
-            local players = Client_Game.singleton():getPlayerManager():getPlayersSortByFightLevel()
-            local text = ""
-            for i, player in pairs(players) do
-                text = text .. tostring(processFloat(player:getProperty():cache().mMoney or 0, 2)) .. "\n"
-            end
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 18,
-        x = function()
-            return getUiValue("ranking_background", "x") - 50
-        end,
-        y = function()
-            return getUiValue("ranking_background", "y") + 160
-        end,
-        font_bold = true,
-        height = 500,
-        width = 100,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("ranking_background", "visible")
-        end
-    },
-    {
-        ui_name = "ranking_kills",
-        type = "Text",
-        align = "_rt",
-        text = function()
-            local players = Client_Game.singleton():getPlayerManager():getPlayersSortByFightLevel()
-            local text = ""
-            for i, player in pairs(players) do
-                text = text .. tostring(player:getProperty():cache().mKill) .. "\n"
-            end
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 18,
-        x = function()
-            return getUiValue("ranking_background", "x") + 30
-        end,
-        y = function()
-            return getUiValue("ranking_background", "y") + 160
-        end,
-        font_bold = true,
-        height = 500,
-        width = 100,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("ranking_background", "visible")
-        end
-    },
-    -- 选关界面
-    {
-        ui_name = "chooseLevel_background",
-        type = "Picture",
-        background_color = "0 0 0 255",
-        align = "_ct",
-        y = 0,
-        x = 0,
-        height = 400,
-        width = 800,
-        visible = false
-    },
-    {
-        ui_name = "close_chooseLevel_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "220 20 60 255",
-        text = function()
-            local text = "X"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") + 370
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 170
-        end,
-        onclick = function()
-            setUiValue("chooseLevel_background", "visible", false)
-        end,
-        font_bold = true,
-        height = 50,
-        width = 50,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "chooseLevel_title",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "选关投票"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 40,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 180
-        end,
-        font_bold = true,
-        height = 50,
-        width = 200,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "chooseLevel_text",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "1.仅能选择低于自己战斗力等级的关卡发起投票\n2.需要大于50%的队友同意，才能选关成功"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") + 50
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 100
-        end,
-        font_bold = true,
-        height = 100,
-        width = 500,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level1_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "1"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") - 300
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 40
-        end,
-        onclick = function()
-          local level = 1
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level2_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "30"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") - 150
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 40
-        end,
-        onclick = function()
-          local level = 30
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level3_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "60"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") - 0
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 40
-        end,
-        onclick = function()
-          local level = 60
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level4_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "90"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") + 150
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 40
-        end,
-        onclick = function()
-          local level = 90
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level5_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "120"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") + 300
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") - 40
-        end,
-        onclick = function()
-          local level = 120
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level6_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "150"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") - 300
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") + 80
-        end,
-        onclick = function()
-          local level = 150
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level7_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "180"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") - 150
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") + 80
-        end,
-        onclick = function()
-          local level = 180
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level8_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "210"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") - 0
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") + 80
-        end,
-        onclick = function()
-          local level = 210
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level9_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "240"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") + 150
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") + 80
-        end,
-        onclick = function()
-          local level = 240
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "level10_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "270"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("chooseLevel_background", "x") + 300
-        end,
-        y = function()
-            return getUiValue("chooseLevel_background", "y") + 80
-        end,
-        onclick = function()
-          local level = 270
-          local player = Client_Game.singleton():getPlayerManager():getPlayerByID()
-          local fightLevel = GameCompute.computePlayerFightLevel(
-              (player:getProperty():cache().mHPLevel or 1) - 1,
-              (player:getProperty():cache().mAttackValueLevel or 1) - 1,
-              (player:getProperty():cache().mAttackTimeLevel or 1) - 1
-          )
-          if fightLevel >= level then
-            Tip("你已选择关卡"..level.."等待其他玩家投票...", 3000, "255 255 0", "reload")
-            Client_Game.singleton():switchLevel(level)
-          else
-            Tip("需要战斗力等级达到"..level.."，才能选择此关！", 3000, "255 255 0", "reload")
-          end
-        end,
-        font_bold = true,
-        height = 50,
-        width = 80,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("chooseLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "voteLevel_background",
-        type = "Picture",
-        background_color = "0 0 0 255",
-        align = "_ct",
-        y = 0,
-        x = 0,
-        height = 400,
-        width = 800,
-        visible = false
-    },
-    {
-        ui_name = "close_voteLevel_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "220 20 60 255",
-        text = function()
-            local text = "X"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("voteLevel_background", "x") + 370
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") - 170
-        end,
-        onclick = function()
-            setUiValue("voteLevel_background", "visible", false)
-        end,
-        font_bold = true,
-        height = 50,
-        width = 50,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "voteLevel_title",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "换关投票"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 40,
-        x = function()
-            return getUiValue("voteLevel_background", "x") + 0
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") - 150
-        end,
-        font_bold = true,
-        height = 100,
-        width = 500,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "voteTimeLeft",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "剩余时间：200"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("voteLevel_background", "x") - 250
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") - 150
-        end,
-        onclick = function()
-            -- closeSafeHouseUI()
-        end,
-        font_bold = true,
-        height = 50,
-        width = 250,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "voteLevel_text",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            -- local text = "战斗力等级:" .. tostring(saveData.mHPLevel + saveData.mAttackValueLevel + saveData.mAttackTimeLevel)
-            local text = "玩家名玩家名 想切换到关卡等级200，是否同意？"
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 20,
-        x = function()
-            return getUiValue("voteLevel_background", "x") + 50
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") - 100
-        end,
-        font_bold = true,
-        height = 100,
-        width = 500,
-        text_format = 0,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "agree_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "同意(Y)"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("voteLevel_background", "x") - 180
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") + 0
-        end,
-        onclick = function()
-            -- closeSafeHouseUI()
-            if getUiValue("agree_button","onclickCallback") then
-                getUiValue("agree_button","onclickCallback")()
-            end
-            setUiValue("agree_text","font_color","255 255 0")
-            setUiValue("disagree_text","font_color","255 255 255")
-        end,
-        font_bold = true,
-        height = 50,
-        width = 150,
-        text_format = 5,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end,
-        enabled = true
-    },
-    {
-        ui_name = "disagree_button",
-        type = "Button",
-        align = "_ct",
-        background_color = "255 255 255 255",
-        text = function()
-            local text = "不同意(N)"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("voteLevel_background", "x") + 180
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") + 0
-        end,
-        onclick = function()
-            -- closeSafeHouseUI()
-            if getUiValue("disagree_button","onclickCallback") then
-                getUiValue("disagree_button","onclickCallback")()
-            end
-            setUiValue("agree_text","font_color","255 255 255")
-            setUiValue("disagree_text","font_color","255 255 0")
-        end,
-        font_bold = true,
-        height = 50,
-        width = 150,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "220 20 60",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end,
-        enabled = true
-    },
-    {
-        ui_name = "agree_text",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "(10票)"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("voteLevel_background", "x") - 180
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") + 80
-        end,
-        onclick = function()
-            -- closeSafeHouseUI()
-        end,
-        font_bold = true,
-        height = 50,
-        width = 150,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end
-    },
-    {
-        ui_name = "disagree_text",
-        type = "Text",
-        align = "_ct",
-        text = function()
-            local text = "(10票)"
-
-            return text
-        end,
-        -- font_type = "Source Han Sans SC Bold",
-        font_size = 30,
-        x = function()
-            return getUiValue("voteLevel_background", "x") + 180
-        end,
-        y = function()
-            return getUiValue("voteLevel_background", "y") + 80
-        end,
-        onclick = function()
-            -- closeSafeHouseUI()
-        end,
-        font_bold = true,
-        height = 50,
-        width = 150,
-        text_format = 1,
-        --text_border = true,
-        shadow = true,
-        font_color = "255 255 255",
-        visible = function()
-            return getUiValue("voteLevel_background", "visible")
-        end
-    }
-}
-
-function initUi()
-    for i = 1, #gameUi do
-        GUI.UI(gameUi[i])
-    end
-end
-
-function uninitUi()
-    for i = 1, #gameUi do
-        gameUi[i].destroy = true
-    end
-end
-
-function getUi(name)
-    for i = 1, #gameUi do
-        if gameUi[i].ui_name == name then
-            return gameUi[i]
-        end
-    end
-    return {}
-end
-
-function getUiValue(ui_name, key)
-    local ui = getUi(ui_name)
-    if type(ui[key]) == "function" then
-        return ui[key]()
-    end
-    return ui[key]
-end
-
-function setUiValue(ui_name, key, value)
-    local ui = getUi(ui_name)
-    if ui then
-        ui[key] = value
-    end
-end
-
-function showUi(name)
-    local ui = getUi(name)
-    if ui then
-        ui.visible = true
-    end
-end
-
-function hideUi(name)
-    local ui = getUi(name)
-    if ui then
-        ui.visible = false
-    end
+function GameCompute.computeDamage(tower,monster,attackIndex)
+    local ret = tower:getConfig().mAttacks[attackIndex].mValue
+    return ret
 end
 -----------------------------------------------------------------------------------------GamePlayerProperty-----------------------------------------------------------------------------------
 function GamePlayerProperty:construction(parameter)
@@ -4194,6 +2240,16 @@ end
 
 function GameProperty:_getLockKey(propertyName)
     return "GameProperty/" .. propertyName
+end
+-----------------------------------------------------------------------------------------GameSceneProperty-----------------------------------------------------------------------------------
+function GameSceneProperty:construction(parameter)
+end
+
+function GameSceneProperty:destruction()
+end
+
+function GameSceneProperty:_getLockKey(propertyName)
+    return "GameSceneProperty/" .. propertyName
 end
 -----------------------------------------------------------------------------------------GameProtecterProperty-----------------------------------------------------------------------------------
 function GameProtecterProperty:construction(parameter)
@@ -4357,7 +2413,6 @@ function Host_Game:construction()
     self.mProperty = new(GameProperty)
     self.mEffectManager = new(Host_GameEffectManager)
     self.mSafeHouse = {}
-    self.mProtecter = new(Host_GameProtecter)
     local x, y, z = GetHomePosition()
     x, y, z = ConvertToBlockIndex(x, y + 0.5, z)
     y = y - 1
@@ -4369,7 +2424,6 @@ function Host_Game:construction()
     self.mSafeHouse.mTerrain:applyTemplate(
         function()
             self.mPlayerManager = new(Host_GamePlayerManager)
-            self.mMonsterManager = new(Host_GameMonsterManager)
             self:start()
         end
     )
@@ -4380,28 +2434,22 @@ function Host_Game:destruction()
     CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
     delete(self.mPlayerManager)
     self.mPlayerManager = nil
-    delete(self.mMonsterManager)
-    self.mMonsterManager = nil
     delete(self.mEffectManager)
     self.mEffectManager = nil
     if self.mSafeHouse then
         delete(self.mSafeHouse.mTerrain)
     end
+    self.mSafeHouse = nil
     if self.mScene then
-        delete(self.mScene.mTerrain)
+        delete(self.mScene)
     end
-    if self.mProtecter then
-        delete(self.mProtecter)
-    end
+    self.mScene = nil
     self.mProperty:safeWrite("mLevel")
-    self.mProperty:safeWrite("mWaveLevel")
     self.mProperty:safeWrite("mState")
     self.mProperty:safeWrite("mSafeHouseLeftTime")
-    self.mProperty:safeWrite("mFightLeftTime")
     self.mProperty:safeWrite("mSwitchLevel")
     self.mProperty:safeWrite("mSwitchLevelAgree")
     self.mProperty:safeWrite("mSwitchLevelDisagree")
-    self.mProperty:safeWrite("mWavePrepareLeftTime")
     delete(self.mProperty)
     Host.removeListener("Game", self)
     Host_Game.msInstance = nil
@@ -4411,8 +2459,8 @@ function Host_Game:update(deltaTime)
     if self.mPlayerManager then
         self.mPlayerManager:update(deltaTime)
     end
-    if self.mMonsterManager then
-        self.mMonsterManager:update(deltaTime)
+    if self.mScene then
+        self.mScene:update(deltaTime)
     end
     if self.mEffectManager then
         self.mEffectManager:update(deltaTime)
@@ -4420,17 +2468,14 @@ function Host_Game:update(deltaTime)
     if self.mSafeHouse then
         self.mSafeHouse.mTerrain:update()
     end
-    if self.mScene then
-        self.mScene.mTerrain:update()
-    end
 end
 
 function Host_Game:receive(parameter)
     if parameter.mMessage == "SwitchLevelRequest" then
         if self.mSwitchLevelRequester then
-            self:sendToClient(parameter.mFrom, "SwitchLevelRequest_Response", {mResult = false})
+            self:sendToClient(parameter.mFrom, "SwitchLevelRequest_Response", {mResult = false,mResponseCallbackKey = parameter.mParameter.mResponseCallbackKey})
         else
-            self:sendToClient(parameter.mFrom, "SwitchLevelRequest_Response", {mResult = true})
+            self:sendToClient(parameter.mFrom, "SwitchLevelRequest_Response", {mResult = true,mResponseCallbackKey = parameter.mParameter.mResponseCallbackKey})
             self.mSwitchLevelRequester = parameter.mFrom
             self:broadcast(
                 "SwitchLevel",
@@ -4441,6 +2486,7 @@ function Host_Game:receive(parameter)
                     Command_Callback,
                     {
                         mDebug = "Host_Game:receive/SwitchLevelRequest",
+                        mTimeOutProcess = function()end,
                         mExecutingCallback = function(command)
                             command.mTimer = command.mTimer or new(Timer)
                             if command.mTimer:total() > GameConfig.mSwitchLevelTime then
@@ -4482,136 +2528,47 @@ function Host_Game:getPlayerManager()
     return self.mPlayerManager
 end
 
-function Host_Game:getMonsterManager()
-    return self.mMonsterManager
+function Host_Game:getScene()
+    return self.mScene
 end
 
 function Host_Game:getEffectManager()
     return self.mEffectManager
 end
 
-function Host_Game:getProtecter()
-    return self.mProtecter
-end
-
-function Host_Game:setScene(scene, callback)
-    if self.mScene then
-        delete(self.mScene.mTerrain)
-    end
-    self.mScene = scene
-    if self.mScene then
-        self.mProperty:safeWrite("mState", "Fight")
-        self.mProperty:safeWrite("mFightLeftTime", GameConfig.mMatch.mTime)
-        self.mProperty:safeWrite("mSafeHouseLeftTime")
-        self.mScene.mTerrain:applyTemplate(
-            function()
-                self.mPlayerManager:setScene(self.mScene)
-                self.mMonsterManager:setScene(self.mScene)
-                self.mProtecter:setScene(self.mScene)
-                callback()
-            end
-        )
-    else
-        self.mPlayerManager:setScene(self.mSafeHouse)
-        self.mMonsterManager:setScene(self.mSafeHouse)
-        self.mProtecter:setScene(self.mSafeHouse)
-        callback()
-    end
-end
-
 function Host_Game:start()
-    self.mProperty:safeWrite("mLevel", self.mProperty:cache().mSwitchLevel or 1)
-    self.mProperty:safeWrite("mSwitchLevel")
-    self.mProperty:safeWrite("mState", "SafeHouse")
-    self.mProperty:safeWrite("mSafeHouseLeftTime", GameConfig.mPrepareTime)
     self.mPlayerManager:initializePlayerProperties()
-    self:setScene(
-        nil,
-        function()
-            self:_nextMatch()
-        end
-    )
+    self:_nextMatch(self.mProperty:cache().mSwitchLevel or 1)
 end
 
 function Host_Game:getProperty()
     return self.mProperty
 end
 
-function Host_Game:_startWave(wave)
-    self.mProperty:safeWrite("mWaveLevel", wave or 1)
-    self.mProperty:safeWrite("mWavePrepareLeftTime", GameConfig.mPrepareTime)
-    self.mPlayerManager:initializePlayerProperties()
-    self.mCommandQueue:post(
-        new(
-            Command_Callback,
-            {
-                mDebug = "Host_Game:_startWave/Prepare",
-                mExecutingCallback = function(command)
-                    command.mTimer = command.mTimer or new(Timer)
-                    if command.mTimer:total() >= GameConfig.mPrepareTime then
-                        command.mState = Command.EState.Finish
-                        self.mProperty:safeWrite("mWavePrepareLeftTime")
-                    else
-                        local left_time = math.floor(GameConfig.mPrepareTime - command.mTimer:total())
-                        if left_time ~= self.mProperty:cache().mSafeHouseLeftTime then
-                            self.mProperty:safeWrite("mWavePrepareLeftTime", left_time)
-                        end
-                    end
-                end
-            }
-        )
-    )
-    self.mCommandQueue:post(
-        new(
-            Command_Callback,
-            {
-                mDebug = "Host_Game:_startWave/Start",
-                mTimeOutProcess = function()end,
-                mExecuteCallback = function(command)
-                    self.mMonsterManager:setScene(self.mScene)
-                end,
-                mExecutingCallback = function(command)
-                    --check time up
-                    command.mTimer = command.mTimer or new(Timer)
-                    if command.mTimer:total() >= GameConfig.mMatch.mTime then
-                        self:broadcast("FightFail")
-                        command.mState = Command.EState.Finish
-                        self:start()
-                        return
-                    else
-                        local left_time = math.floor(GameConfig.mMatch.mTime - command.mTimer:total())
-                        if left_time ~= self.mProperty:cache().mFightLeftTime then
-                            self.mProperty:safeWrite("mFightLeftTime", left_time)
-                        end
-                    end
-                    --check success
-                    if self.mMonsterManager:isAllDead() then
-                        self:broadcast("WaveSuccess")
-                        command.mState = Command.EState.Finish
-                        self:_startWave(self.mProperty:cache().mWaveLevel + 1)
-                    elseif self.mProtecter:getProperty():cache().mHP <= 0 then--check failed
-                        self:broadcast("FightFail")
-                        command.mState = Command.EState.Finish
-                        self:start()
-                    end
-                end
-            }
-        )
-    )
+function Host_Game:_nextMatch(level)
+    self.mProperty:safeWrite("mLevel", level)
+    self.mProperty:safeWrite("mSwitchLevel")
+    self:_startSafeHouse(function()
+    self:_startMatch()
+    end)
 end
 
-function Host_Game:_nextMatch()
+function Host_Game:_startSafeHouse(callback)
     self.mProperty:safeWrite("mState", "SafeHouse")
     self.mCommandQueue:post(
         new(
             Command_Callback,
             {
-                mDebug = "Host_Game:_nextMatch/Prepare",
+                mDebug = "Host_Game:_startSafeHouse",
+                mTimeOutProcess = function()end,
                 mExecutingCallback = function(command)
                     command.mTimer = command.mTimer or new(Timer)
                     if command.mTimer:total() >= GameConfig.mPrepareTime then
                         self.mProperty:safeWrite("mSafeHouseLeftTime")
                         command.mState = Command.EState.Finish
+                        if callback then
+                            callback()
+                        end
                     else
                         local left_time = math.floor(GameConfig.mPrepareTime - command.mTimer:total())
                         if left_time ~= self.mProperty:cache().mSafeHouseLeftTime then
@@ -4622,38 +2579,27 @@ function Host_Game:_nextMatch()
             }
         )
     )
-    self.mCommandQueue:post(
-        new(
-            Command_Callback,
-            {
-                mDebug = "Host_Game:_nextMatch/Start",
-                mExecuteCallback = function(command)
-                    command.mState = Command.EState.Finish
-                    self:_startMatch(
-                        function()
-                            self:_startWave(1)
-                        end
-                    )
-                end
-            }
-        )
-    )
 end
 
-function Host_Game:_startMatch(callback)
-    local scene = {mLevel = self.mProperty:cache().mLevel}
+function Host_Game:_startMatch()
+    self.mProperty:safeWrite("mState", "Fight")
+    delete(self.mScene)
+    self.mScene = nil
     local terrains = {}
     for _, terrain in pairs(GameConfig.mTerrainLibrary) do
         if not terrain.mLevel or terrain.mLevel == self.mProperty:cache().mLevel then
             terrains[#terrains + 1] = terrain
         end
     end
+    local terrain
     if #terrains > 0 then
         local terrain_config = terrains[math.random(1, #terrains)]
-        scene.mTerrain = new(Host_GameTerrain, {mTemplateResource = terrain_config.mTemplateResource})
-        self:setScene(scene, callback)
-    else
-        self:setScene(nil, callback)
+        terrain = new(Host_GameTerrain, {mTemplateResource = terrain_config.mTemplateResource})
+    end
+    if terrain then
+        self.mScene = new(Host_GameScene,{mTerrain = terrain,mSuccessCallback = function()
+            self:_nextMatch(self.mProperty:cache().mSwitchLevel or (self.mProperty:cache().mLevel + 1))
+        end})
     end
 end
 -----------------------------------------------------------------------------------------Host_GamePlayerManager-----------------------------------------------------------------------------------
@@ -4685,7 +2631,10 @@ function Host_GamePlayerManager:construction()
 end
 
 function Host_GamePlayerManager:destruction()
-    self:reset()
+    for _, player in pairs(self.mPlayers) do
+        delete(player)
+    end
+    self.mPlayers = nil
     PlayerManager.removeEventListener("PlayerEntityCreate", "Host_GamePlayerManager")
     PlayerManager.removeEventListener("PlayerRemoved", "Host_GamePlayerManager")
     Host.removeListener("GamePlayerManager", self)
@@ -4701,14 +2650,6 @@ end
 function Host_GamePlayerManager:receive(parameter)
 end
 
-function Host_GamePlayerManager:reset()
-    self:broadcast("Reset")
-    for _, player in pairs(self.mPlayers) do
-        delete(player)
-    end
-    self.mPlayers = {}
-end
-
 function Host_GamePlayerManager:getPlayerByID(playerID)
     playerID = playerID or GetPlayerId()
     for _, player in pairs(self.mPlayers) do
@@ -4720,13 +2661,6 @@ end
 
 function Host_GamePlayerManager:initializePlayerProperties(propertyName)
     self:eachPlayer("initializeProperty", propertyName)
-end
-
-function Host_GamePlayerManager:setScene(scene)
-    self.mScene = scene
-    if self.mScene then
-        self:eachPlayer("setPosition", self.mScene.mTerrain:getProtectPoint())
-    end
 end
 
 function Host_GamePlayerManager:_createPlayer(entityWatcher)
@@ -4757,15 +2691,6 @@ function Host_GamePlayerManager:eachPlayer(functionName, ...)
         player[functionName](player, ...)
     end
 end
-
-function Host_GamePlayerManager:isAllDead()
-    for _, player in pairs(self.mPlayers) do
-        if not player:getProperty():cache().mHP or player:getProperty():cache().mHP > 0 then
-            return false
-        end
-    end
-    return true
-end
 -----------------------------------------------------------------------------------------Host_GameMonsterManager-----------------------------------------------------------------------------------
 function Host_GameMonsterManager:construction()
     self.mMonsters = {}
@@ -4776,9 +2701,7 @@ function Host_GameMonsterManager:construction()
         "Host_GameMonsterManager",
         function(inst, parameter)
             for _, monster in pairs(self.mMonsters) do
-                if monster:getProperty():cache().mHP > 0 then
-                    self:sendToClient(parameter.mPlayerID, "CreateMonster", {mID = monster:getID()})
-                end
+                self:sendToClient(parameter.mPlayerID, "CreateMonster", {mID = monster:getID()})
             end
         end,
         self
@@ -4787,41 +2710,17 @@ function Host_GameMonsterManager:construction()
 end
 
 function Host_GameMonsterManager:destruction()
-    self:reset()
-    self.mProperty:safeWrite("mMonsterCount")
-    delete(self.mProperty)
-    Host.removeListener("GameMonsterManager", self)
-end
-
-function Host_GameMonsterManager:reset()
-    self:broadcast("Reset")
     for _, monster in pairs(self.mMonsters) do
         delete(monster)
     end
-    self.mMonsters = {}
+    self.mMonsters = nil
     delete(self.mMonsterGenerator)
-end
-
-function Host_GameMonsterManager:setScene(scene)
-    self:reset()
-
-    if scene and scene.mTerrain and #scene.mTerrain:getMonsterRoads() > 0 then
-        self.mMonsterGenerator =
-            new(
-            Host_GameMonsterGenerator,
-            {
-                mRoads = scene.mTerrain:getMonsterRoads(),
-                mGenerateSpeed = GameConfig.mMatch.mMonsterGenerateSpeed *
-                    #Host_Game.singleton():getPlayerManager().mPlayers,
-                mGenerateCount = GameCompute.computeMonsterGenerateCount(
-                    Host_Game.singleton():getProperty():cache().mLevel
-                ) * GameCompute.computeMonsterGenerateCountScale(Host_Game.singleton():getPlayerManager().mPlayers)
-            }
-        )
-    else
-        delete(self.mMonsterGenerator)
-        self.mMonsterGenerator = nil
-    end
+    self.mMonsterGenerator = nil
+    self.mProperty:safeWrite("mMonsterCount")
+    delete(self.mProperty)
+    self.mProperty = nil
+    PlayerManager.removeEventListener("PlayerEntityCreate","Host_GameMonsterManager")
+    Host.removeListener("GameMonsterManager", self)
 end
 
 function Host_GameMonsterManager:update(deltaTime)
@@ -4843,25 +2742,59 @@ end
 function Host_GameMonsterManager:receive(parameter)
 end
 
+function Host_GameMonsterManager:startWave(level)
+    self:reset()
+    self.mMonsterGenerator =
+            new(
+            Host_GameMonsterGenerator,
+            {
+                mRoads = Host_Game.singleton():getScene().mTerrain:getMonsterRoads(),
+                mGenerateSpeed = GameConfig.mMatch.mMonsterGenerateSpeed *
+                    #Host_Game.singleton():getPlayerManager().mPlayers,
+                mGenerateCount = GameCompute.computeMonsterGenerateCount(
+                    Host_Game.singleton():getProperty():cache().mLevel
+                ) * GameCompute.computeMonsterGenerateCountScale(Host_Game.singleton():getPlayerManager().mPlayers)
+            }
+        )
+end
+
+function Host_GameMonsterManager:reset()
+    for _, monster in pairs(self.mMonsters) do
+        delete(monster)
+    end
+    self.mMonsters = {}
+    delete(self.mMonsterGenerator)
+    self.mMonsterGenerator = nil
+end
+
 function Host_GameMonsterManager:isAllDead()
     if self.mMonsterGenerator and self.mMonsterGenerator.mGenerateCount > 0 then
         return false
     end
-    for _, monster in pairs(self.mMonsters) do
-        if monster:getProperty():cache().mHP > 0 then
-            return false
-        end
+    if next(self.mMonsters) then
+        return false
     end
     return true
+end
+
+function Host_GameMonsterManager:onMonsterDead(monster)
+    for k, test in pairs(self.mMonsters) do
+        if test == monster then
+            table.remove(self.mMonsters,k)
+            delete(monster)
+            break
+        end
+    end
+    if self:isAllDead() then
+        Host_Game.singleton():getScene():onMonsterAllDead()
+    end
 end
 
 function Host_GameMonsterManager:_updateMonsterCount()
     if self.mMonsterGenerator then
         local count = self.mMonsterGenerator.mGenerateCount or 0
         for _, monster in pairs(self.mMonsters) do
-            if monster:getProperty():cache().mHP > 0 then
-                count = count + 1
-            end
+            count = count + 1
         end
 
         self.mProperty:safeWrite("mMonsterCount", count)
@@ -4879,7 +2812,7 @@ function Host_GameMonsterManager:_createMonster(parameter)
         {
             mConfigIndex = parameter.mConfigIndex,
             mRoad = parameter.mRoad,
-            mLevel = GameCompute.computeMonsterLevel(Host_Game.singleton():getProperty():cache().mLevel)
+            mLevel = GameCompute.computeMonsterLevel(Host_Game.singleton():getScene():getProperty():cache().mLevel)
         }
     )
     self.mMonsters[#self.mMonsters + 1] = ret
@@ -4901,6 +2834,89 @@ function Host_GameMonsterManager:_generateMonsters(deltaTime)
         end
     end
 end
+-----------------------------------------------------------------------------------------Host_GameTowerManager-----------------------------------------------------------------------------------
+function Host_GameTowerManager:construction(parameter)
+    self.mTowers = {}
+
+    Host.addListener(self:_getSendKey(),self)
+end
+
+function Host_GameTowerManager:destruction()
+    for _,tower in pairs(self.mTowers) do
+        delete(tower)
+    end
+    self.mTowers = nil
+
+    Host.removeListener(self:_getSendKey(),self)
+end
+
+function Host_GameTowerManager:update()
+    for _,tower in pairs(self.mTowers) do
+        tower:update()
+    end
+end
+
+function Host_GameTowerManager:broadcast(message,parameter)
+    Host.broadcast({mKey = self:_getSendKey(),mMessage = message,mParameter = parameter})
+end
+
+function Host_GameTowerManager:sendToClient(playerID,message,parameter)
+    Host.sendTo(playerID, {mKey = self:_getSendKey(), mMessage = message, mParameter = parameter})
+end
+
+function Host_GameTowerManager:receive(parameter)
+    if parameter.mMessage == "CreateTower" then
+        local tower = self:_createTower(parameter.mFrom,parameter.mParameter.mConfigIndex,parameter.mParameter.mPosition)
+        local tower_id
+        if tower then
+            tower_id = tower:getID()
+        end
+        self:sendToClient(parameter.mFrom,"CreateTower_Response",{mResult = tower~=nil,mResponseCallbackKey = parameter.mParameter.mResponseCallbackKey})
+        if tower then
+            self:broadcast("TowerCreated",{mOwnerID = parameter.mFrom,mConfigIndex = parameter.mParameter.mConfigIndex,mID = tower_id,mPosition = parameter.mParameter.mPosition})
+        end
+    elseif parameter.mMessage == "DestroyTower" then
+        if self:_destroyTower(parameter.mFrom,parameter.mParameter.mID) then
+            self:sendToClient(parameter.mFrom,"DestroyTower_Response",{mResult = true,mResponseCallbackKey = parameter.mParameter.mResponseCallbackKey})
+            self:broadcast("TowerDestroied",{mOperatorID = parameter.mFrom,mID = parameter.mParameter.mID})
+        else
+            self:sendToClient(parameter.mFrom,"DestroyTower_Response",{mResult = false,mResponseCallbackKey = parameter.mParameter.mResponseCallbackKey})
+        end
+    end
+end
+
+function Host_GameTowerManager:getTowerByPosition(position)
+    for _,tower in pairs(self.mTowers) do
+        if tower.mEntity:getBlockPosition():equals(vector3d:new(position[1],position[2],position[3])) then
+            return tower
+        end
+    end
+end
+
+function Host_GameTowerManager:_getSendKey()
+    return "GameTowerManager"
+end
+
+function Host_GameTowerManager:_createTower(playerID,configIndex,position)
+    if self:getTowerByPosition(position) then
+        return
+    end
+    local ret = new(Host_GameTower,{mOwnerID = playerID,mConfigIndex = configIndex,mPosition = position})
+    self.mTowers[#self.mTowers + 1] = ret
+    return ret
+end
+
+function Host_GameTowerManager:_destroyTower(playerID,towerID)
+    for k,tower in pairs(self.mTowers) do
+        if tower:getID() == towerID then
+            if tower:getOwnerID() == playerID then
+                table.remove(self.mTowers,k)
+                delete(tower)
+                return true
+            end
+        end
+    end
+end
 -----------------------------------------------------------------------------------------Host_GameEffectManager-----------------------------------------------------------------------------------
 function Host_GameEffectManager:construction(parameter)
 end
@@ -4919,7 +2935,7 @@ function Host_GameEffectManager:monsterDead(monster)
     local monster_info = {}
     monster_info.mPosition = monster.mEntity:getPosition() + vector3d:new(0, 0.5, 0)
     local player_infos = {}
-    local total_money = monLootGold(monster.mProperty:cache().mLevel)
+    local total_money = 1
     for player_id, damage in pairs(monster.mDamaged) do
         local player = Host_Game.singleton():getPlayerManager():getPlayerByID(player_id)
         if player then
@@ -4931,7 +2947,152 @@ function Host_GameEffectManager:monsterDead(monster)
     end
     self:broadcast("MonsterDead", {mMonsterInfo = monster_info, mPlayerInfos = player_infos})
 end
------------------------------------------------------------------------------------------Host_GameTerrain-----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------Host_GameScene-----------------------------------------------------------------------------------
+function Host_GameScene:construction(parameter)
+    self.mTerrain = parameter.mTerrain
+    self.mProperty = new(GameSceneProperty)
+    self.mCommandQueue = CommandQueueManager.singleton():createQueue()
+
+    Host.addListener(self:_getSendKey(),self)
+
+    self.mTerrain:applyTemplate(function()
+        Host_Game.singleton():getPlayerManager():eachPlayer("setPosition",self.mTerrain:getProtectPoint())
+        self.mMonsterManager = new(Host_GameMonsterManager)
+        self.mTowerManager = new(Host_GameTowerManager)
+        self.mProtecter = new(Host_GameProtecter)
+        self:_startWave(1)
+    end)
+end
+
+function Host_GameScene:destruction()
+    CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
+    self.mCommandQueue = nil
+    self.mProperty:safeWrite("mLevel")
+    self.mProperty:safeWrite("mWavePrepareLeftTime")
+    self.mProperty:safeWrite("mFightLeftTime")
+    delete(self.mProperty)
+    self.mProperty = nil
+    delete(self.mProtecter)
+    self.mProtecter = nil
+    delete(self.mTowerManager)
+    self.mTowerManager = nil
+    delete(self.mMonsterManager)
+    self.mMonsterManager = nil
+    delete(self.mTerrain)
+    self.mTerrain = nil
+
+    Host.removeListener(self:_getSendKey(),self)
+end
+
+function Host_GameScene:update(deltaTime)
+    if self.mFightTimer then
+        if self.mFightTimer:total() >= GameConfig.mMatch.mTime then
+            self.mFightTimer = nil
+            self.mProperty:safeWrite("mFightLeftTime")
+            self:broadcast("TimeUp")
+            Host_Game.singleton():start()
+            return
+        else
+            local left_time = math.floor(GameConfig.mMatch.mTime - self.mFightTimer:total())
+            if left_time ~= self.mProperty:cache().mFightLeftTime then
+                self.mProperty:safeWrite("mFightLeftTime", left_time)
+            end
+        end
+    end
+    if self.mMonsterManager then
+        self.mMonsterManager:update(deltaTime)
+    end
+    if self.mTowerManager then
+        self.mTowerManager:update(deltaTime)
+    end
+    if self.mProtecter then
+        self.mProtecter:update(deltaTime)
+    end
+end
+
+function Host_GameScene:receive(parameter)
+end
+
+function Host_GameScene:broadcast(message,parameter)
+    Host.broadcast({mKey = "GameScene", mMessage = message, mParameter = parameter})
+end
+
+function Host_GameScene:getProperty()
+    return self.mProperty
+end
+
+function Host_GameScene:getMonsterManager()
+    return self.mMonsterManager
+end
+
+function Host_GameScene:getTowerManager()
+    return self.mTowerManager
+end
+
+function Host_GameScene:getProtecter()
+    return self.mProtecter
+end
+
+function Host_GameScene:getTerrain()
+    return self.mTerrain
+end
+
+function Host_GameScene:onMonsterAllDead()
+    self:broadcast("WaveSuccess")
+    self:_startWave(self.mProperty:cache().mLevel + 1)
+end
+
+function Host_GameScene:onProtecterDead()
+    self:broadcast("WaveFail")
+    self.mProtecter:reset()
+    self.mMonsterManager:reset()
+    self:_startWave(1)
+end
+
+function Host_GameScene:_getSendKey()
+    return "GameScene"
+end
+
+function Host_GameScene:_startWave(level)
+    self.mProperty:safeWrite("mLevel",level)
+    self.mProperty:safeWrite("mWavePrepareLeftTime", GameConfig.mPrepareTime)
+    self.mCommandQueue:post(
+        new(
+            Command_Callback,
+            {
+                mDebug = "Host_GameScene:_startWave/Prepare",
+                mTimeOutProcess = function()end,
+                mExecutingCallback = function(command)
+                    command.mTimer = command.mTimer or new(Timer)
+                    if command.mTimer:total() >= GameConfig.mPrepareTime then
+                        command.mState = Command.EState.Finish
+                        self.mProperty:safeWrite("mWavePrepareLeftTime")
+                    else
+                        local left_time = math.floor(GameConfig.mPrepareTime - command.mTimer:total())
+                        if left_time ~= self.mProperty:cache().mSafeHouseLeftTime then
+                            self.mProperty:safeWrite("mWavePrepareLeftTime", left_time)
+                        end
+                    end
+                end
+            }
+        )
+    )
+    self.mCommandQueue:post(
+        new(
+            Command_Callback,
+            {
+                mDebug = "Host_GameScene:_startWave/Start",
+                mTimeOutProcess = function()end,
+                mExecuteCallback = function(command)
+                    self.mFightTimer = new(Timer)
+                    self.mProperty:safeWrite("mFightLeftTime",GameConfig.mMatch.mTime)
+                    self.mMonsterManager:startWave(self.mProperty:cache().mLevel)
+                    command.mState = Command.EState.Finish
+                end
+            }
+        )
+    )
+end
 -----------------------------------------------------------------------------------------Host_GameTerrain-----------------------------------------------------------------------------------
 function Host_GameTerrain:construction(parameter)
     local x, y, z = GetHomePosition()
@@ -4942,11 +3103,9 @@ function Host_GameTerrain:construction(parameter)
     self.mTemplateResource = parameter.mTemplateResource
     self.mRoads = {}
     self.mTowerPoints = {}
-    self.mCommandQueue = CommandQueueManager.singleton():createQueue()
 end
 
 function Host_GameTerrain:destruction()
-    CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
     self:restoreTemplate()
 end
 
@@ -4979,7 +3138,7 @@ function Host_GameTerrain:applyTemplate(callback)
             end
         end
         if callback then
-            self.mCommandQueue:post(
+            CommandQueueManager.singleton():post(
                 new(
                     Command_Callback,
                     {
@@ -5154,7 +3313,7 @@ function Host_GameMonster:construction(parameter)
     self.mConfigIndex = parameter.mConfigIndex
     self.mID = Host_GameMonster.mNameIndex
     Host_GameMonster.mNameIndex = Host_GameMonster.mNameIndex + 1
-    local client_key = EntityCustomManager.singleton():createEntity(
+    self.mEntity = EntityCustomManager.singleton():createEntity(
         {mX = parameter.mRoad[1][1]
         ,mY = parameter.mRoad[1][2]
         ,mZ = parameter.mRoad[1][3]
@@ -5166,7 +3325,6 @@ function Host_GameMonster:construction(parameter)
                 self.mEntity:moveToBlock(point[1],point[2],point[3],"addition")
             end
         end)
-    self.mEntity = EntityCustomManager.singleton():getEntityByClientKey(client_key)
     self.mProperty = new(GameMonsterProperty, {mID = self.mID})
     self.mProperty:safeWrite("mConfigIndex", parameter.mConfigIndex)
     self.mProperty:safeWrite("mLevel", parameter.mLevel)
@@ -5186,16 +3344,14 @@ function Host_GameMonster:destruction()
     if self.mEntity then
         EntityCustomManager.singleton():destroyEntity(self.mEntity.mClientKey)
     end
+    self.mEntity = nil
     Host.removeListener(self:_getSendKey(), self)
 end
 
 function Host_GameMonster:update()
     if self.mEntity then
         if not next(self.mEntity.mTargets) then
-            Host_Game.singleton():getProtecter():onHit()
-            self.mProperty:safeWrite("mHP",0)
-            EntityCustomManager.singleton():destroyEntity(self.mEntity.mClientKey)
-            self.mEntity = nil
+            Host_Game.singleton():getScene():getProtecter():onHit(self)
         end
     end
 end
@@ -5204,10 +3360,17 @@ function Host_GameMonster:receive(parameter)
     local is_responese, _ = string.find(parameter.mMessage, "_Response")
     if is_responese then
     else
-        if parameter.mMessage == "PropertyChange" then
-            self:_propertyChange(parameter._from, parameter.mParameter)
-        end
     end
+end
+
+function Host_GameMonster:onHit(tower,attackIndex)
+    local damage = GameCompute.computeDamage(tower,self,attackIndex)
+    sub_stract = math.min(damage, self.mProperty:cache().mHP)
+    self.mDamaged = self.mDamaged or {}
+    self.mDamaged[tower:getOwnerID()] = self.mDamaged[tower:getOwnerID()] or 0
+    self.mDamaged[tower:getOwnerID()] = self.mDamaged[tower:getOwnerID()] + sub_stract
+    self.mProperty:safeWrite("mHP", self.mProperty:cache().mHP - sub_stract)
+    self:_checkDead(tower)
 end
 
 function Host_GameMonster:getID()
@@ -5230,25 +3393,13 @@ function Host_GameMonster:_getSendKey()
     return "GameMonster/" .. tostring(self.mID)
 end
 
-function Host_GameMonster:_propertyChange(playerID, change)
-    if change.mHPSubtract then
-        sub_stract = math.min(change.mHPSubtract, self.mProperty:cache().mHP)
-        self.mDamaged = self.mDamaged or {}
-        self.mDamaged[playerID] = self.mDamaged[playerID] or 0
-        self.mDamaged[playerID] = self.mDamaged[playerID] + sub_stract
-        self.mProperty:safeWrite("mHP", self.mProperty:cache().mHP - sub_stract)
-    end
-
-    self:_checkDead(playerID)
-end
-
-function Host_GameMonster:_checkDead(lastHitPlayerID)
-    if self.mProperty:cache().mHP <= 0 and self.mEntity then
+function Host_GameMonster:_checkDead(tower)
+    if self.mProperty:cache().mHP <= 0 then
         Host_Game.singleton():getEffectManager():monsterDead(self)
         EntityCustomManager.singleton():destroyEntity(self.mEntity.mClientKey)
         self.mEntity = nil
         if self.mDamaged then
-            local total_money = monLootGold(self.mProperty:cache().mLevel)
+            local total_money = 1
             for player_id, damage in pairs(self.mDamaged) do
                 local player = Host_Game.singleton():getPlayerManager():getPlayerByID(player_id)
                 if player then
@@ -5258,14 +3409,16 @@ function Host_GameMonster:_checkDead(lastHitPlayerID)
             end
             self.mDamaged = nil
         end
-        local player = Host_Game.singleton():getPlayerManager():getPlayerByID(lastHitPlayerID)
-        player:getProperty():safeWrite("mKill", player:getProperty():cache().mKill or 0 + 1)
+        local player = tower:getOwnerPlayer()
+        player:getProperty():safeWrite("mKill", player:getProperty():cache().mKill + 1)
+        Host_Game.singleton():getScene():getMonsterManager():onMonsterDead(self)
     end
 end
 -----------------------------------------------------------------------------------------Host_GameProtecter-----------------------------------------------------------------------------------
 function Host_GameProtecter:construction(parameter)
+    self.mCommandQueue = CommandQueueManager.singleton():createQueue()
     self.mProperty = new(GameProtecterProperty)
-    local client_key = EntityCustomManager.singleton():createEntity(
+    self.mEntity = EntityCustomManager.singleton():createEntity(
         {mX = 19200
         ,mY = 10
         ,mZ = 19200
@@ -5274,35 +3427,46 @@ function Host_GameProtecter:construction(parameter)
             self.mProperty:safeWrite("mEntityHostKey", hostKey)
             self.mEntity:setAnimationID(1)
         end)
-    self.mEntity = EntityCustomManager.singleton():getEntityByClientKey(client_key)
+
+    self.mProperty:safeWrite("mHP",GameConfig.mProtecter.mHP)
+    local x,y,z = ConvertToRealPosition(Host_Game.singleton():getScene().mTerrain:getProtectPoint()[1],Host_Game.singleton():getScene().mTerrain:getProtectPoint()[2] + 1,Host_Game.singleton():getScene().mTerrain:getProtectPoint()[3])
+    self:_setPosition({x,y,z})
 end
 
 function Host_GameProtecter:destruction()
     EntityCustomManager.singleton():destroyEntity(self.mEntity.mClientKey)
     self.mEntity = nil
     self.mProperty:safeWrite("mHP")
+    self.mProperty:safeWrite("mEntityHostKey")
+    delete(self.mProperty)
+    self.mProperty = nil
+    CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
+    self.mCommandQueue = nil
+end
+
+function Host_GameProtecter:update()
 end
 
 function Host_GameProtecter:getProperty()
     return self.mProperty
 end
 
+function Host_GameProtecter:reset()
+    self.mProperty:safeWrite("mHP",GameConfig.mProtecter.mHP)
+end
+
 function Host_GameProtecter:_getSendKey()
     return "GameProtecter"
 end
 
-function Host_GameProtecter:setScene(scene)
-    if scene and scene.mTerrain then
-        local x,y,z = ConvertToRealPosition(scene.mTerrain:getProtectPoint()[1],scene.mTerrain:getProtectPoint()[2] + 1,scene.mTerrain:getProtectPoint()[3])
-        self:_setPosition({x,y,z})
-    else
-        self:_setPosition()
-    end
-    self.mProperty:safeWrite("mHP",GameConfig.mProtecter.mHP)
-end
-
-function Host_GameProtecter:onHit()
+function Host_GameProtecter:onHit(monster)
     self.mProperty:safeWrite("mHP",math.max(self.mProperty:cache().mHP - 1,0))
+
+    if self.mProperty:cache().mHP <= 0 then
+        Host_Game.singleton():getScene():onProtecterDead()
+    else
+        Host_Game.singleton():getScene():getMonsterManager():onMonsterDead(monster)
+    end
 end
 
 function Host_GameProtecter:_setPosition(pos)
@@ -5313,8 +3477,8 @@ function Host_GameProtecter:_setPosition(pos)
             self.mEntity:setPosition(0,0,0)
         end
     else
-        CommandQueueManager.singleton():post(new(Command_Callback,{mDebug = "Host_GameProtecter:setScene",mExecuteCallback = function(command)
-            self:_setPosition(scene)
+        self.mCommandQueue:post(new(Command_Callback,{mDebug = "Host_GameProtecter:_setPosition",mExecuteCallback = function(command)
+            self:_setPosition(pos)
             command.mState = Command.EState.Finish
         end}))
     end
@@ -5326,9 +3490,25 @@ function Host_GameTower:construction(parameter)
     Host_GameTower.mNameIndex = Host_GameTower.mNameIndex + 1
     self.mProperty = new(GameTowerProperty,{mID = self.mID})
     self.mProperty:safeWrite("mConfigIndex",parameter.mConfigIndex)
+    self.mProperty:safeWrite("mOwnerID",parameter.mOwnerID)
+    self.mProperty:safeWrite("mLevel",1)
+    self.mEntity = EntityCustomManager.singleton():createEntity(
+        {mX = parameter.mPosition[1]
+        ,mY = parameter.mPosition[2]
+        ,mZ = parameter.mPosition[3]
+        ,mModel = {mFile = self:getConfig().mModel.mFile,mResource = self:getConfig().mModel.mResource}
+        },function(hostKey)
+            self.mProperty:safeWrite("mEntityHostKey", hostKey)
+            self.mEntity:setAnimationID(1)
+        end)
 end
 
 function Host_GameTower:destruction()
+    EntityCustomManager.singleton():destroyEntity(self.mEntity.mClientKey)
+    self.mProperty:safeWrite("mConfigIndex")
+    self.mProperty:safeWrite("mOwnerID")
+    self.mProperty:safeWrite("mLevel")
+    self.mProperty:safeWrite("mEntityHostKey")
     delete(self.mProperty)
     self.mProperty = nil
 end
@@ -5338,20 +3518,56 @@ function Host_GameTower:update()
     for i,attack_cfg in pairs(self:getConfig().mAttacks) do
         local timer = self.mAttackTimers[i]
         if timer and timer:total() >= attack_cfg.mSpeed then
+            delete(timer)
             self.mAttackTimers[i] = nil
         end
-    end   
+    end
     for i,attack_cfg in pairs(self:getConfig().mAttacks) do
         local timer = self.mAttackTimers[i]
         if not timer then
-            for i=-attack_cfg.mRange,attack_cfg.mRange do
+            for _,monster in pairs(Host_Game.singleton():getScene():getMonsterManager().mMonsters) do
+                if monster.mEntity:getBlockPosition()[1] <= self.mEntity:getBlockPosition()[1] + attack_cfg.mRange
+                and monster.mEntity:getBlockPosition()[3] <= self.mEntity:getBlockPosition()[3] + attack_cfg.mRange
+                and monster.mEntity:getBlockPosition()[1] >= self.mEntity:getBlockPosition()[1] - attack_cfg.mRange
+                and monster.mEntity:getBlockPosition()[3] >= self.mEntity:getBlockPosition()[3] - attack_cfg.mRange
+                then
+                    local src_position = self.mEntity:getPosition()
+                    local target_position = monster.mEntity:getPosition()
+                    local track_bullet = {
+                        mType = "Ray",
+                        mTime = 1,
+                        mSpeed = 100,
+                        mSrcPosition = src_position,
+                    }
+                    local dir = target_position - src_position
+                    local length = dir:length()
+                    track_bullet.mTime = length / track_bullet.mSpeed
+                    track_bullet.mDirection = dir:normalize()
+                    local track_hit = {
+                        mType = "Point",
+                        mTime = 0.1,
+                        mSrcPosition = target_position - track_bullet.mDirection,
+                        mModel = {mFile = GameConfig.mHitEffect.mModel.mFile, mResource = GameConfig.mHitEffect.mModel.mResource,mScaling = GameConfig.mHitEffect.mModel.mScaling}
+                    }
+                    local function create_track_entity()
+                        if track_bullet.mModel and track_hit.mModel then
+                            EntityCustomManager.singleton():createTrackEntity({track_bullet, track_hit})
+                        end
+                    end
+                    GetResourceModel(
+                        GameConfig.mBullet.mModel.mResource,
+                        function(path, err)
+                            track_bullet.mModel = {mFile = path}
+                            create_track_entity()
+                        end
+                    )
+                    monster:onHit(self,i)
+                    self.mAttackTimers[i] = new(Timer)
+                    break
+                end
             end
         end
-    end   
-end
-
-function Host_GameTower:_getSendKey()
-    return "GameTower/"..tostring(self.mID)
+    end
 end
 
 function Host_GameTower:getProperty()
@@ -5360,6 +3576,22 @@ end
 
 function Host_GameTower:getConfig()
     return GameConfig.mTowerLibrary[self.mProperty:cache().mConfigIndex]
+end
+
+function Host_GameTower:getOwnerID()
+    return self.mProperty:cache().mOwnerID
+end
+
+function Host_GameTower:getOwnerPlayer()
+    return Host_Game.singleton():getPlayerManager():getPlayerByID(self:getOwnerID())
+end
+
+function Host_GameTower:getID()
+    return self.mID
+end
+
+function Host_GameTower:_getSendKey()
+    return "GameTower/"..tostring(self.mID)
 end
 -----------------------------------------------------------------------------------------Client_Game-----------------------------------------------------------------------------------
 function Client_Game.singleton(construct)
@@ -5373,14 +3605,14 @@ end
 function Client_Game:construction()
     self.mProperty = new(GameProperty)
     self.mPlayerManager = new(Client_GamePlayerManager)
-    self.mMonsterManager = new(Client_GameMonsterManager)
     self.mEffectManager = new(Client_GameEffectManager)
-    self.mProtecter = new(Client_GameProtecter)
+    self.mScene = new(Client_GameScene)
 
     self.mProperty:addPropertyListener(
         "mLevel",
         self,
         function(_, value)
+            self.mScene:reset()
         end
     )
     self.mProperty:addPropertyListener(
@@ -5391,18 +3623,6 @@ function Client_Game:construction()
     )
     self.mProperty:addPropertyListener(
         "mSafeHouseLeftTime",
-        self,
-        function(_, value)
-        end
-    )
-    self.mProperty:addPropertyListener(
-        "mWavePrepareLeftTime",
-        self,
-        function(_, value)
-        end
-    )
-    self.mProperty:addPropertyListener(
-        "mFightLeftTime",
         self,
         function(_, value)
         end
@@ -5432,10 +3652,8 @@ function Client_Game:construction()
 end
 
 function Client_Game:destruction()
-    delete(self.mProtecter)
-    self.mProtecter = nil
-    delete(self.mMonsterManager)
-    self.mMonsterManager = nil
+    delete(self.mScene)
+    self.mScene = nil
     delete(self.mPlayerManager)
     self.mPlayerManager = nil
     delete(self.mEffectManager)
@@ -5443,8 +3661,6 @@ function Client_Game:destruction()
     self.mProperty:removePropertyListener("mLevel")
     self.mProperty:removePropertyListener("mState")
     self.mProperty:removePropertyListener("mSafeHouseLeftTime")
-    self.mProperty:removePropertyListener("mWavePrepareLeftTime")
-    self.mProperty:removePropertyListener("mFightLeftTime")
     self.mProperty:removePropertyListener("mSwitchLevel")
     self.mProperty:removePropertyListener("mSwitchLevelAgree")
     self.mProperty:removePropertyListener("mSwitchLevelDisagree")
@@ -5456,13 +3672,15 @@ end
 
 function Client_Game:initialize()
     self.mPlayerManager:initialize()
-    self.mMonsterManager:initialize()
+    self.mScene:initialize()
     self.mEffectManager:initialize()
 end
 
 function Client_Game:update(deltaTime)
     self.mPlayerManager:update(deltaTime)
-    self.mMonsterManager:update(deltaTime)
+    if self.mScene then
+        self.mScene:update(deltaTime)
+    end
     self.mEffectManager:update(deltaTime)
 end
 
@@ -5470,9 +3688,9 @@ function Client_Game:receive(parameter)
     local is_responese, _ = string.find(parameter.mMessage, "_Response")
     if is_responese then
         local message = string.sub(parameter.mMessage, 1, is_responese - 1)
-        if self.mResponseCallback[message] then
-            self.mResponseCallback[message](parameter.mParameter)
-            self.mResponseCallback[message] = nil
+        if self.mResponseCallback[message] and self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey] then
+            self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey](parameter.mParameter)
+            self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey] = nil
         end
     else
         if parameter.mMessage == "FightSuccess" then
@@ -5524,111 +3742,6 @@ function Client_Game:receive(parameter)
                 )
             )
         elseif parameter.mMessage == "SwitchLevel" then
-            local nickname = tostring(parameter.mParameter.mRequester)
-            if GetEntityById(parameter.mParameter.mRequester) then
-                nickname = GetEntityById(parameter.mParameter.mRequester).nickname
-            end
-            setUiValue("voteLevel_background", "visible", true)
-            CommandQueueManager.singleton():post(
-                new(
-                    Command_Callback,
-                    {
-                        mDebug = "SwitchLevelTimer",
-                        mExecutingCallback = function(command)
-                            command.mTimer = command.mTimer or new(Timer)
-                            setUiValue(
-                                "voteTimeLeft",
-                                "text",
-                                "剩余时间：" .. tostring(math.floor(GameConfig.mSwitchLevelTime - command.mTimer:total())) .. "秒"
-                            )
-                            setUiValue(
-                                "agree_text",
-                                "text",
-                                "(" .. tostring(self.mProperty:cache().mSwitchLevelAgree or 0) .. "票)"
-                            )
-                            setUiValue(
-                                "disagree_text",
-                                "text",
-                                "(" .. tostring(self.mProperty:cache().mSwitchLevelDisagree or 0) .. "票)"
-                            )
-                            if command.mTimer:total() > GameConfig.mSwitchLevelTime then
-                                setUiValue("voteLevel_background", "visible", false)
-                                command.mState = Command.EState.Finish
-                            end
-                        end
-                    }
-                )
-            )
-            setUiValue(
-                "voteLevel_text",
-                "text",
-                nickname .. " 想切换到关卡等级" .. tostring(parameter.mParameter.mLevel) .. "，是否同意？"
-            )
-            if parameter.mParameter.mRequester ~= GetPlayerId() then
-                setUiValue(
-                    "agree_button",
-                    "enabled",
-                    true
-                )
-                setUiValue(
-                    "disagree_button",
-                    "enabled",
-                    true
-                )
-                setUiValue(
-                    "agree_button",
-                    "onclickCallback",
-                    function()
-                        self:sendToHost(
-                            "SwitchLevelAnswer",
-                            {mResult = true, mRequester = parameter.mParameter.mRequester}
-                        )
-                        setUiValue(
-                            "agree_button",
-                            "enabled",
-                            false
-                        )
-                        setUiValue(
-                            "disagree_button",
-                            "enabled",
-                            false
-                        )
-                    end
-                )
-                setUiValue(
-                    "disagree_button",
-                    "onclickCallback",
-                    function()
-                        self:sendToHost(
-                            "SwitchLevelAnswer",
-                            {mResult = false, mRequester = parameter.mParameter.mRequester}
-                        )
-                        setUiValue(
-                            "agree_button",
-                            "enabled",
-                            false
-                        )
-                        setUiValue(
-                            "disagree_button",
-                            "enabled",
-                            false
-                        )
-                    end
-                )
-            else
-                self:sendToHost("SwitchLevelAnswer", {mResult = true, mRequester = parameter.mParameter.mRequester})
-                setUiValue("agree_text","font_color","255 255 0")
-                setUiValue(
-                    "agree_button",
-                    "enabled",
-                    false
-                )
-                setUiValue(
-                    "disagree_button",
-                    "enabled",
-                    false
-                )
-            end
         end
     end
 end
@@ -5643,7 +3756,13 @@ end
 
 function Client_Game:requestToHost(message, parameter, callback)
     self.mResponseCallback = self.mResponseCallback or {}
-    self.mResponseCallback[message] = callback
+    self.mResponseCallback[message] = self.mResponseCallback[message] or  {}
+    self.mResponseCallbackKey = self.mResponseCallbackKey or 1
+    local callback_key = self.mResponseCallbackKey
+    self.mResponseCallbackKey = self.mResponseCallbackKey + 1
+    self.mResponseCallback[message][callback_key] = callback
+    parameter = parameter or {}
+    parameter.mResponseCallbackKey = callback_key
     self:sendToHost(message, parameter)
 end
 
@@ -5674,8 +3793,8 @@ function Client_Game:getPlayerManager()
     return self.mPlayerManager
 end
 
-function Client_Game:getMonsterManager()
-    return self.mMonsterManager
+function Client_Game:getScene()
+    return self.mScene
 end
 
 function Client_Game:getEffectManager()
@@ -5684,6 +3803,89 @@ end
 
 function Client_Game:getProperty()
     return self.mProperty
+end
+-----------------------------------------------------------------------------------------Client_GameScene-----------------------------------------------------------------------------------
+function Client_GameScene:construction(parameter)
+    self.mProperty = new(GameSceneProperty)
+    self.mMonsterManager = new(Client_GameMonsterManager)
+    self.mTowerManager = new(Client_GameTowerManager)
+    self.mProtecter = new(Client_GameProtecter)
+
+    self.mProperty:addPropertyListener(
+        "mWavePrepareLeftTime",
+        self,
+        function(_, value)
+        end
+    )
+    self.mProperty:addPropertyListener(
+        "mFightLeftTime",
+        self,
+        function(_, value)
+        end
+    )
+    self.mProperty:addPropertyListener(
+        "mLevel",
+        self,
+        function(_, value)
+        end
+    )
+    Client.addListener(self:_getSendKey(),self)
+end
+
+function Client_GameScene:destruction()
+    self.mProperty:removePropertyListener("mWavePrepareLeftTime")
+    self.mProperty:removePropertyListener("mFightLeftTime")
+    self.mProperty:removePropertyListener("mLevel")
+    delete(self.mMonsterManager)
+    self.mMonsterManager = nil
+    delete(self.mTowerManager)
+    self.mTowerManager = nil
+    delete(self.mProtecter)
+    self.mProtecter = nil
+    delete(self.mProperty)
+    self.mProperty = nil
+    Client.removeListener(self:_getSendKey(),self)
+end
+
+function Client_GameScene:initialize()
+    self.mMonsterManager:initialize()
+    self.mTowerManager:initialize()
+    self.mProtecter:initialize()
+end
+
+function Client_GameScene:update()
+    self.mMonsterManager:update()
+    self.mTowerManager:update()
+    self.mProtecter:update()
+end
+
+function Client_GameScene:receive(parameter)
+end
+
+function Client_GameScene:reset()
+    self.mMonsterManager:reset()
+    self.mTowerManager:reset()
+    self.mProtecter:reset()
+end
+
+function Client_GameScene:getProperty()
+    return self.mProperty
+end
+
+function Client_GameScene:getTowerManager()
+    return self.mTowerManager
+end
+
+function Client_GameScene:getMonsterManager()
+    return self.mMonsterManager
+end
+
+function Client_GameScene:getProtecter()
+    return self.mProtecter
+end
+
+function Client_GameScene:_getSendKey()
+    return "GameScene"
 end
 -----------------------------------------------------------------------------------------Client_GamePlayerManager-----------------------------------------------------------------------------------
 function Client_GamePlayerManager:construction()
@@ -5711,7 +3913,10 @@ function Client_GamePlayerManager:construction()
 end
 
 function Client_GamePlayerManager:destruction()
-    self:reset()
+    for _, player in pairs(self.mPlayers) do
+        delete(player)
+    end
+    self.mPlayers = nil
     PlayerManager.removeEventListener("PlayerEntityCreate","Client_GamePlayerManager")
     PlayerManager.removeEventListener("PlayerRemoved","Client_GamePlayerManager")
     Client.removeListener("GamePlayerManager", self)
@@ -5721,13 +3926,6 @@ function Client_GamePlayerManager:initialize()
     for id, player in pairs(PlayerManager.mPlayers) do
         self:_createPlayer(id)
     end
-end
-
-function Client_GamePlayerManager:reset()
-    for _, player in pairs(self.mPlayers) do
-        delete(player)
-    end
-    self.mPlayers = {}
 end
 
 function Client_GamePlayerManager:update()
@@ -5740,9 +3938,6 @@ function Client_GamePlayerManager:receive(parameter)
     local is_responese, _ = string.find(parameter.mMessage, "_Response")
     if is_responese then
     else
-        if parameter.mMessage == "Reset" then
-            self:reset()
-        end
     end
 end
 
@@ -5757,42 +3952,6 @@ function Client_GamePlayerManager:getPlayerByID(playerID)
             return player
         end
     end
-end
-
-function Client_GamePlayerManager:onHit(weapon, result)
-    for _, player in pairs(self.mPlayers) do
-        player:onHit(weapon, result)
-    end
-end
-
-function Client_GamePlayerManager:getPlayersSortByFightLevel()
-    local players = clone(self.mPlayers)
-    table.sort(
-        players,
-        function(a, b)
-            if
-                a:getProperty():cache().mHPLevel and a:getProperty():cache().mAttackValueLevel and
-                    a:getProperty():cache().mAttackTimeLevel and
-                    b:getProperty():cache().mHPLevel and
-                    b:getProperty():cache().mAttackValueLevel and
-                    b:getProperty():cache().mAttackTimeLevel
-             then
-                return GameCompute.computePlayerFightLevel(
-                    a:getProperty():cache().mHPLevel,
-                    a:getProperty():cache().mAttackValueLevel,
-                    a:getProperty():cache().mAttackTimeLevel
-                ) >
-                    GameCompute.computePlayerFightLevel(
-                        b:getProperty():cache().mHPLevel,
-                        b:getProperty():cache().mAttackValueLevel,
-                        b:getProperty():cache().mAttackTimeLevel
-                    )
-            else
-                return false
-            end
-        end
-    )
-    return players
 end
 
 function Client_GamePlayerManager:_createPlayer(playerID)
@@ -5825,7 +3984,10 @@ function Client_GameMonsterManager:construction()
 end
 
 function Client_GameMonsterManager:destruction()
-    self:reset()
+    for _, monster in pairs(self.mMonsters) do
+        delete(monster)
+    end
+    self.mMonsters = nil
     self.mProperty:removePropertyListener("mMonsterCount")
     delete(self.mProperty)
     Client.removeListener("GameMonsterManager", self)
@@ -5834,17 +3996,17 @@ end
 function Client_GameMonsterManager:initialize()
 end
 
-function Client_GameMonsterManager:update(deltaTime)
-    for _, monster in pairs(self.mMonsters) do
-        monster:update()
-    end
-end
-
 function Client_GameMonsterManager:reset()
     for _, monster in pairs(self.mMonsters) do
         delete(monster)
     end
     self.mMonsters = {}
+end
+
+function Client_GameMonsterManager:update(deltaTime)
+    for _, monster in pairs(self.mMonsters) do
+        monster:update()
+    end
 end
 
 function Client_GameMonsterManager:sendToHost(message, parameter)
@@ -5857,19 +4019,8 @@ function Client_GameMonsterManager:receive(parameter)
     else
         if parameter.mMessage == "CreateMonster" then
             self:_createMonster(parameter.mParameter.mID)
-        elseif parameter.mMessage == "Reset" then
-            self:reset()
-        end
-    end
-end
-
-function Client_GameMonsterManager:onHit(weapon, result)
-    if result.entity then
-        for _, monster in pairs(self.mMonsters) do
-            if EntityCustomManager.singleton():getEntityByHostKey(monster:getProperty():cache().mEntityHostKey) and result.entity.entityId == EntityCustomManager.singleton():getEntityByHostKey(monster:getProperty():cache().mEntityHostKey).mEntity.entityId then
-                monster:onHit(weapon)
-                break
-            end
+        elseif parameter.mMessage == "DestroyMonster" then
+            self:_destroyMonster(parameter.mParameter.mID)
         end
     end
 end
@@ -5919,45 +4070,96 @@ end
 function Client_GameEffectManager:update()
     self.mEffectManager:update()
 end
+-----------------------------------------------------------------------------------------Client_GameTowerManager-----------------------------------------------------------------------------------
+function Client_GameTowerManager:construction(parameter)
+    self.mTowers = {}
+
+    Client.addListener("GameMonsterManager", self)
+end
+
+function Client_GameTowerManager:destruction()
+    for _,tower in pairs(self.mTowers) do
+        delete(tower)
+    end
+    self.mTowers = nil
+end
+
+function Client_GameTowerManager:update()
+    for _,tower in pairs(self.mTowers) do
+        tower:update()
+    end
+end
+
+function Client_GameTowerManager:receive(parameter)
+    local is_responese, _ = string.find(parameter.mMessage, "_Response")
+    if is_responese then
+        local message = string.sub(parameter.mMessage, 1, is_responese - 1)
+        if self.mResponseCallback[message] and self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey] then
+            self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey](parameter.mParameter)
+            self.mResponseCallback[message][parameter.mParameter.mResponseCallbackKey] = nil
+        end
+    else
+        if parameter.mMessage == "TowerCreated" then
+            self:_createTower(parameter.mParameter)
+        elseif parameter.mMessage == "TowerDestroied" then
+            self:_destoryTower(parameter.mParameter)
+        end
+    end
+end
+
+function Client_GameTowerManager:sendToHost(message,parameter)
+    Client.sendToHost(self:_getSendKey(), {mMessage = message, mParameter = parameter})
+end
+
+function Client_GameTowerManager:requestToHost(message,parameter)
+    self.mResponseCallback = self.mResponseCallback or {}
+    self.mResponseCallback[message] = self.mResponseCallback[message] or  {}
+    self.mResponseCallbackKey = self.mResponseCallbackKey or 1
+    local callback_key = self.mResponseCallbackKey
+    self.mResponseCallbackKey = self.mResponseCallbackKey + 1
+    self.mResponseCallback[message][callback_key] = callback
+    parameter = parameter or {}
+    parameter.mResponseCallbackKey = callback_key
+    self:sendToHost(message, parameter)
+end
+
+function Client_GameTowerManager:initialize()
+end
+
+function Client_GameTowerManager:reset()
+    for _,tower in pairs(self.mTowers) do
+        delete(tower)
+    end
+    self.mTowers = {}
+end
+
+function Client_GameTowerManager:createTower(position,configIndex)
+    self:requestToHost("CreateTower",{mPosition = position,mConfigIndex = configIndex},function(parameter)
+    end)
+end
+
+function Client_GameTowerManager:_getSendKey()
+    return "GameTowerManager"
+end
+
+function Client_GameTowerManager:_createTower(parameter)
+end
+
+function Client_GameTowerManager:_destroyTower(parameter)
+end
 -----------------------------------------------------------------------------------------Client_GamePlayer-----------------------------------------------------------------------------------
 function Client_GamePlayer:construction(parameter)
     self.mPlayerID = parameter.mPlayerID
     self.mProperty = new(GamePlayerProperty, {mPlayerID = self.mPlayerID})
-    self.mHeadOnUIs = {}
-    self.mNextHeadOnUIID = 1
     if self.mPlayerID == GetPlayerId() then
-        local saved_data = getSavedData()
-        saved_data.mHPLevel = saved_data.mHPLevel or 1
-        saved_data.mAttackValueLevel = saved_data.mAttackValueLevel or 1
-        saved_data.mAttackTimeLevel = saved_data.mAttackTimeLevel or 1
-        saved_data.mMoney = saved_data.mMoney or 0
-        saved_data.mKill = saved_data.mKill or 0
-        self.mProperty:safeWrite("mHPLevel", saved_data.mHPLevel)
-        self.mProperty:safeWrite("mAttackValueLevel", saved_data.mAttackValueLevel)
-        self.mProperty:safeWrite("mAttackTimeLevel", saved_data.mAttackTimeLevel)
-        self.mProperty:safeWrite("mMoney", saved_data.mMoney)
-        self.mProperty:safeWrite("mKill", saved_data.mKill)
-
-        initUi()
-
         InputManager.addListener(
             self,
             function(_, event)
                 if event.event_type == "keyPressEvent" then
-                    if event.keyname == "DIK_U" then
-                        setUiValue("upgrade_background", "visible", not getUiValue("upgrade_background", "visible"))
-                    elseif event.keyname == "DIK_TAB" then
-                        setUiValue("ranking_background", "visible", not getUiValue("ranking_background", "visible"))
-                    elseif event.keyname == "DIK_L" then
-                        setUiValue(
-                            "chooseLevel_background",
-                            "visible",
-                            not getUiValue("chooseLevel_background", "visible")
-                        )
-                    end
                 elseif event.event_type == "mouseReleaseEvent" and event.mouse_button == "left" then
                     local pick_result = Pick(false, true, true, false, false)
                     if pick_result and pick_result.block_id and pick_result.block_id == GameConfig.mTowerPointBlockID then
+                        Client_Game.singleton():getScene():getTowerManager():createTower({pick_result.blockX,pick_result.blockY + 1,pick_result.blockZ},1)
                     end
                 end
             end
@@ -5967,11 +4169,7 @@ function Client_GamePlayer:construction(parameter)
             self,
             function(_, value)
                 if value == "Fight" then
-                    setUiValue("upgrade_background", "visible", false)
-                    setUiValue("levelInfo_background", "visible", true)
                 elseif value == "SafeHouse" then
-                    setUiValue("upgrade_background", "visible", true)
-                    setUiValue("levelInfo_background", "visible", false)
                 end
             end
         )
@@ -5984,41 +4182,7 @@ function Client_GamePlayer:construction(parameter)
                 end
             end
         )
-        self.mProperty:addPropertyListener(
-            "mAttackTimeLevel",
-            self,
-            function()
-            end
-        )
-    else
-        self.mProperty:addPropertyListener(
-            "mAttackTimeLevel",
-            self,
-            function()
-            end
-        )
     end
-    self.mProperty:addPropertyListener(
-        "mHPLevel",
-        self,
-        function()
-        end
-    )
-    self.mProperty:addPropertyListener(
-        "mAttackValueLevel",
-        self,
-        function()
-        end
-    )
-    self.mProperty:addPropertyListener(
-        "mHP",
-        self,
-        function(_, value)
-            if value then
-                self:_updateBloodUI()
-            end
-        end
-    )
     self.mProperty:addPropertyListener(
         "mMoney",
         self,
@@ -6036,22 +4200,10 @@ function Client_GamePlayer:construction(parameter)
 end
 
 function Client_GamePlayer:destruction()
-    self.mProperty:removePropertyListener("mHPLevel", self)
-    self.mProperty:removePropertyListener("mAttackValueLevel", self)
-    self.mProperty:removePropertyListener("mAttackTimeLevel", self)
-    self.mProperty:removePropertyListener("mHP", self)
     self.mProperty:removePropertyListener("mMoney", self)
+    self.mProperty:removePropertyListener("mKill", self)
     delete(self.mProperty)
-    if self.mBloodUI then
-        self.mBloodUI:destroy()
-        self.mBloodUI = nil
-    end
-    for _,ui in pairs(self.mHeadOnUIs) do
-        ui:destroy()
-    end
-    self.mHeadOnUIs = nil
     if self.mPlayerID == GetPlayerId() then
-        uninitUi()
         InputManager.removeListener(self)
     end
     Client.removeListener(self:_getSendKey(), self)
@@ -6067,139 +4219,13 @@ function Client_GamePlayer:receive(parameter)
     if is_responese then
     else
         if parameter.mMessage == "AddMoney" then
-            local saved_data = getSavedData()
-            saved_data.mMoney = saved_data.mMoney + parameter.mParameter.mMoney
-            self.mProperty:safeWrite("mMoney", saved_data.mMoney)
-            if GetEntityHeadOnObject(self.mPlayerID, "AddMoney/" .. tostring(self.mPlayerID)) then
-                local ui =
-                    GetEntityHeadOnObject(self.mPlayerID, "AddMoney/" .. tostring(self.mPlayerID)):createChild(
-                    {
-                        type = "text",
-                        font_type = "微软雅黑",
-                        font_color = "255 225 0",
-                        font_size = 50,
-                        align = "_ct",
-                        y = -80,
-                        x = -80,
-                        height = 50,
-                        width = 300,
-                        visible = true,
-                        text = "+￥" .. tostring(processFloat(parameter.mParameter.mMoney, 2))
-                    }
-                )
-                local ui_id = self:_generateNextHeadOnUIID()
-                self.mHeadOnUIs[ui_id] = ui
-                CommandQueueManager.singleton():post(
-                    new(
-                        Command_Callback,
-                        {
-                            mDebug = "Client_GamePlayer:AddMoney/UI",
-                            mExecutingCallback = function(command)
-                                command.mTimer = command.mTimer or new(Timer)
-                                if command.mTimer:total() > 0.8 then
-                                    ui:destroy()
-                                    self.mHeadOnUIs[ui_id] = nil
-                                    command.mState = Command.EState.Finish
-                                else
-                                    ui.y = -80 - 150 * command.mTimer:total()
-                                end
-                            end
-                        }
-                    )
-                )
-            end
-        elseif parameter.mMessage == "OnHit" then
-            if GetEntityHeadOnObject(self.mPlayerID, "OnHit/" .. tostring(self.mPlayerID)) then
-                local ui =
-                    GetEntityHeadOnObject(self.mPlayerID, "OnHit/" .. tostring(self.mPlayerID)):createChild(
-                    {
-                        type = "text",
-                        font_type = "微软雅黑",
-                        font_color = "255 0 0",
-                        font_size = 50,
-                        align = "_ct",
-                        y = -60,
-                        x = -80,
-                        height = 50,
-                        width = 200,
-                        visible = true,
-                        text = "-" .. tostring(parameter.mParameter.mValue)
-                    }
-                )
-                local ui_id = self:_generateNextHeadOnUIID()
-                self.mHeadOnUIs[ui_id] = ui
-                CommandQueueManager.singleton():post(
-                    new(
-                        Command_Callback,
-                        {
-                            mDebug = "Client_GamePlayer:OnHit/UI",
-                            mExecutingCallback = function(command)
-                                command.mTimer = command.mTimer or new(Timer)
-                                if command.mTimer:total() > 0.8 then
-                                    ui:destroy()
-                                    self.mHeadOnUIs[ui_id] = nil
-                                    command.mState = Command.EState.Finish
-                                else
-                                    ui.y = -60 - 150 * command.mTimer:total()
-                                end
-                            end
-                        }
-                    )
-                )
-            end
+            self.mProperty:safeWrite("mMoney", self.mProperty:cache().mMoney + parameter.mParameter.mMoney)
         end
     end
 end
 
 function Client_GamePlayer:sendToHost(message, parameter)
     Client.sendToHost(self:_getSendKey(), {mMessage = message, mParameter = parameter})
-end
-
-function Client_GamePlayer:onHit(weapon, result)
-    if self.mPlayerID == GetPlayerId() then
-        local x, y, z = GetPlayer():GetBlockPos()
-        local src_position =
-            GetPlayer():getPosition() + vector3d:new(0, 0.5, 0) + vector3d:new(GetEntityDirection(self.mPlayerID)) * 0.5
-        local target_position
-        local track_bullet = {
-            mType = "Ray",
-            mTime = 1,
-            mSpeed = 100,
-            mSrcPosition = src_position,
-            mModelFacing = GetPlayer():GetFacing() - 1.57
-        }
-        if result.entity then
-            target_position = result.entity:getPosition() + vector3d:new(0, 0.1, 0)
-        elseif result.blockX and result.blockY and result.blockZ then
-            target_position = {}
-            target_position[1], target_position[2], target_position[3] =
-                ConvertToRealPosition(result.blockX, result.blockY, result.blockZ)
-        else
-            target_position = src_position + vector3d:new(GetEntityDirection(self.mPlayerID)) * 100
-        end
-        local dir = target_position - src_position
-        local length = dir:length()
-        track_bullet.mTime = length / track_bullet.mSpeed
-        track_bullet.mDirection = dir:normalize()
-        local track_hit = {
-            mType = "Point",
-            mTime = 0.1,
-            mSrcPosition = target_position - track_bullet.mDirection,
-            mModel = {mFile = GameConfig.mHitEffect.mModel.mFile, mResource = GameConfig.mHitEffect.mModel.mResource,mScaling = GameConfig.mHitEffect.mModel.mScaling}
-        }
-        local function create_track_entity()
-            if track_bullet.mModel and track_hit.mModel then
-                EntityCustomManager.singleton():createTrackEntity({track_bullet, track_hit})
-            end
-        end
-        GetResourceModel(
-            GameConfig.mBullet.mModel.mResource,
-            function(path, err)
-                track_bullet.mModel = {mFile = path}
-                create_track_entity()
-            end
-        )
-    end
 end
 
 function Client_GamePlayer:getID()
@@ -6216,35 +4242,6 @@ end
 
 function Client_GamePlayer:_getSendKey()
     return "GamePlayer/" .. tostring(self.mPlayerID)
-end
-
-function Client_GamePlayer:_updateBloodUI()
-    if not self.mBloodUI and GetEntityHeadOnObject(self.mPlayerID, "Blood/" .. tostring(self.mPlayerID)) then
-        self.mBloodUI =
-            GetEntityHeadOnObject(self.mPlayerID, "Blood/" .. tostring(self.mPlayerID)):createChild(
-            {
-                ui_name = "background",
-                type = "container",
-                color = "0 255 0",
-                align = "_ct",
-                y = -50,
-                x = -150,
-                height = 20,
-                width = 200,
-                visible = true
-            }
-        )
-    end
-    if self.mProperty:cache().mHP and self.mProperty:cache().mHPLevel and self.mBloodUI then
-        self.mBloodUI.width =
-            200 * self.mProperty:cache().mHP / GameCompute.computePlayerHP(self.mProperty:cache().mHPLevel)
-    end
-end
-
-function Client_GamePlayer:_generateNextHeadOnUIID()
-    local ret = self.mNextHeadOnUIID
-    self.mNextHeadOnUIID = self.mNextHeadOnUIID + 1
-    return ret
 end
 -----------------------------------------------------------------------------------------Client_GameMonster-----------------------------------------------------------------------------------
 function Client_GameMonster:construction(parameter)
@@ -6303,6 +4300,7 @@ function Client_GameMonster:destruction()
     self.mHeadOnUIs = nil
     delete(self.mProperty)
     CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
+    self.mCommandQueue = nil
     Client.removeListener(self:_getSendKey(), self)
 end
 
@@ -6328,65 +4326,6 @@ function Client_GameMonster:getConfig()
     if self.mProperty:cache().mConfigIndex then
         return GameConfig.mMonsterLibrary[self.mProperty:cache().mConfigIndex]
     end
-end
-
-function Client_GameMonster:onHit(weapon)
-    local hit_value =
-        GameCompute.computePlayerAttackValue(
-        Client_Game.singleton():getPlayerManager():getPlayerByID():getProperty():cache().mAttackValueLevel
-    )
-    if
-    EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey) and EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity and
-    EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity:GetInnerObject() and
-            GetEntityHeadOnObject(
-                EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity.entityId,
-                "OnHit/" .. tostring(EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity.entityId)
-            )
-     then
-        local ui =
-            GetEntityHeadOnObject(
-                EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity.entityId,
-            "OnHit/" .. tostring(EntityCustomManager.singleton():getEntityByHostKey(self:getProperty():cache().mEntityHostKey).mEntity.entityId)
-        ):createChild(
-            {
-                ui_name = "background",
-                type = "text",
-                font_type = "微软雅黑",
-                font_color = "255 0 0",
-                font_size = 50,
-                align = "_ct",
-                y = -100,
-                x = -80,
-                height = 50,
-                width = 200,
-                visible = true,
-                text = "-" .. tostring(hit_value)
-            }
-        )
-        local ui_id = self:_generateNextHeadOnUIID()
-        self.mHeadOnUIs[ui_id] = ui
-        CommandQueueManager.singleton():post(
-            new(
-                Command_Callback,
-                {
-                    mDebug = "Client_GameMonster:onHit/UI",
-                    mExecutingCallback = function(command)
-                        command.mTimer = command.mTimer or new(Timer)
-                        if command.mTimer:total() > 0.5 then
-                            ui:destroy()
-                            self.mHeadOnUIs[ui_id] = nil
-                            command.mState = Command.EState.Finish
-                        else
-                            ui.y = -100 - 150 * command.mTimer:total()
-                        end
-                    end
-                }
-            )
-        )
-    end
-    local property_change = {}
-    property_change.mHPSubtract = hit_value
-    self:sendToHost("PropertyChange", property_change)
 end
 
 function Client_GameMonster:_getSendKey()
@@ -6501,10 +4440,22 @@ function Client_GameProtecter:construction(parameter)
 end
 
 function Client_GameProtecter:destruction()
+    self.mProperty:removePropertyListener("mEntityHostKey",self)
+    self.mProperty:removePropertyListener("mHP",self)
     delete(self.mProperty)
     self.mProperty = nil
     CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
     self.mCommandQueue = nil
+    Client.removeListener(self:_getSendKey(), self)
+end
+
+function Client_GameProtecter:update()
+end
+
+function Client_GameProtecter:initialize()
+end
+
+function Client_GameProtecter:reset()
 end
 
 function Client_GameProtecter:getProperty()
@@ -6596,7 +4547,36 @@ function Client_GameProtecter:_generateNextHeadOnUIID()
     self.mNextHeadOnUIID = self.mNextHeadOnUIID + 1
     return ret
 end
+-----------------------------------------------------------------------------------------Client_GameTower-----------------------------------------------------------------------------------
+function Client_GameTower:construction(parameter)
+    self.mCommandQueue = CommandQueueManager.singleton():createQueue()
+    self.mProperty = new(GameProtecterProperty)
+    self.mHeadOnUIs = {}
+    self.mNextHeadOnUIID = 1
 
+    self.mProperty:addPropertyListener(
+        "mEntityHostKey",
+        self,
+        function(_, value)
+        end
+    )
+    Client.addListener(self:_getSendKey(), self)
+end
+
+function Client_GameTower:destruction()
+    self.mProperty:removePropertyListener("mEntityHostKey",self)
+    delete(self.mProperty)
+    self.mProperty = nil
+    CommandQueueManager.singleton():destroyQueue(self.mCommandQueue)
+    self.mCommandQueue = nil
+end
+
+function Client_GameTower:_getSendKey()
+    return "GameTower/"..tostring(self.mID)
+end
+
+function Client_GameTower:receive(parameter)
+end
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
